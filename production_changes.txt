@@ -1,0 +1,2 @@
+# Generate and store this key securely (32 bytes for AES-256)
+# For demo, generate here; in prod, load from env var or vault
