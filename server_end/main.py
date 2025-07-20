@@ -4,12 +4,79 @@ from db import patients_collection,emt_collection
 from utils.encryption import encrypt, decrypt
 import bcrypt
 import datetime
+from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-#Models
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Replace "*" with your frontend domain in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+
+
+#EMT Models
+
+class RegisterEMT(BaseModel):
+    username: str
+    password: str
+    first_name: str
+    middle_name: str | None = None
+    last_name: str
+
+class LoginEMT(BaseModel):
+    username: str
+    password: str
+
+@app.post("/emt/register")
+async def register_emt(data: RegisterEMT):
+    existing = await emt_collection.find_one({"username": data.username})
+    if existing:
+        raise HTTPException(status_code=409, detail = "Username already exists")
+    
+    hashed_pw = bcrypt.hashpw(data.password.encode(),bcrypt.gensalt()).decode()
+
+    doc = {
+        "username": data.username,
+        "hashed_password": hashed_pw,
+        "first_name": encrypt(data.first_name),
+        "middle_name": encrypt(data.middle_name or ""),
+        "last_name": encrypt(data.last_name),
+        "created_at": datetime.datetime.now(datetime.timezone.utc)
+    }
+
+    await emt_collection.insert_one(doc)
+    return {"status": "success"}
+
+@app.post("/emt/login")
+async def login_emt(data: LoginEMT):
+    emt = await emt_collection.find_one({"username":data.username})
+    if not emt:
+        raise HTTPException(status_code = 404, detail = "EMT not found")
+    
+    if not bcrypt.checkpw(data.password.encode(),emt['hashed_password'].encode()):
+        raise HTTPException(status_code = 401, detail = "Invalid password")
+
+    emt_info = {
+        "first_name": decrypt(emt['first_name']['ciphertext'], emt['first_name']['nonce']),
+        "middle_name": decrypt(emt['middle_name']['ciphertext'], emt['middle_name']['nonce']),
+        "last_name": decrypt(emt['last_name']['ciphertext'], emt['last_name']['nonce']),
+        "created_at": emt['created_at'].isoformat()
+    }
+    return emt_info
+
+
+
+
+#Patient Models
 class RegisterPatient(BaseModel):
     mediconnect_username:str
     password:str
@@ -23,21 +90,49 @@ class RegisterPatient(BaseModel):
     use_fingerprint: bool = False
     fingerprint_data: str | None = None
 
+# Patient registration model
+class RegisterPatient(BaseModel):
+    mediconnect_username: str | None = None
+    password: str | None = None
+    first_name: str
+    middle_name: str | None = None
+    last_name: str
+    driver_license_id: str | None = None
+    portal_username: str
+    portal_password: str
+    provider_portal_name: str
+    use_fingerprint: bool = False
+    fingerprint_data: str | None = None
+
 @app.post("/register")
 async def register_patient(data: RegisterPatient):
-    hashed_pw = bcrypt.hashpw(data.password.encode(),bcrypt.gensalt()).decode()
+    # Credential validation
+    if not (
+        (data.driver_license_id or data.mediconnect_username)
+        and (data.password or data.driver_license_id)
+    ):
+        raise HTTPException(status_code=400, detail="Insufficient credentials provided")
+
+    # Hash password
+    hashed_pw = None
+    if data.password:
+        hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+
+    # Hash fingerprint data if provided
     fingerprint_hash = None
     if data.use_fingerprint and data.fingerprint_data:
-        fingerprint_hash = bcrypt.hashpw(data.fingerprint_data.encode(),bcrypt.gensalt()).decode()
+        fingerprint_hash = bcrypt.hashpw(data.fingerprint_data.encode(), bcrypt.gensalt()).decode()
 
+    # Encrypt fields
     encrypted_fields = {
         "first_name": encrypt(data.first_name),
-        "middle_name":encrypt(data.middle_name or ""),
-        "last_name":encrypt(data.last_name),
-        "driver_license_id": encrypt(data.driver_license_id),
+        "middle_name": encrypt(data.middle_name or ""),
+        "last_name": encrypt(data.last_name),
+        "driver_license_id": encrypt(data.driver_license_id) if data.driver_license_id else None,
         "portal_username": encrypt(data.portal_username),
-        "portal_password": encrypt(data.portal_password)
+        "portal_password": encrypt(data.portal_password),
     }
+
     doc = {
         "mediconnect_username": data.mediconnect_username,
         "hashed_password": hashed_pw,
@@ -45,39 +140,75 @@ async def register_patient(data: RegisterPatient):
         "use_fingerprint": data.use_fingerprint,
         "fingerprint_data": fingerprint_hash,
         "created_at": datetime.datetime.now(datetime.timezone.utc),
-        **encrypted_fields
+        **{k: v for k, v in encrypted_fields.items() if v is not None},
     }
 
     await patients_collection.insert_one(doc)
-    return{"status":"success"}
-
-class PatientQuery(BaseModel):
-    driver_license_id:str
-    password:str
+    return {"status": "success"}
 
 
-@app.post("/lookup")
-async def lookup_patient(query:PatientQuery):
+
+class PatientLogin(BaseModel):
+    mediconnect_username: Optional[str] = None
+    password: Optional[str] = None
+
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    driver_license_id: Optional[str] = None
+
+    fingerprint_data: Optional[str] = None
+
+
+@app.post("/patient/login")
+async def login_patient(data:PatientLogin):
     patients = patients_collection.find({})
-    async for patient in patients:
-        #Decrypt and match driver license ID
-        try:
-            license_id = decrypt(patient['driver_license_id']['ciphertext'], patient['driver_license_id']['nonce'])
-        except:
-            continue
-        if license_id == query.driver_license_id:
-            #verify password
-            if bcrypt.checkpw(query.password.encode(),patient['hashed_password'].encode()):
-                #Build response
-                portal_info = {
-                    "API": "true",  # Replace dynamically once hospital API detection is implemented
-                    "portal_name": patient["provider_portal_name"],
-                    "auth_username": decrypt(patient['portal_username']['ciphertext'], patient['portal_username']['nonce']),
-                    "auth_password": decrypt(patient['portal_password']['ciphertext'], patient['portal_password']['nonce']),
-                    "first_name": decrypt(patient['first_name']['ciphertext'], patient['first_name']['nonce']),
-                    "middle_name": decrypt(patient['middle_name']['ciphertext'], patient['middle_name']['nonce']),
-                    "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce'])
-                }
-                return portal_info
-            else: raise HTTPException(status_code = 401, detail = "Invalid password")
-    raise HTTPException(status_code = 404, detail = "Patient not found")
+
+    # --- Fingerprint Authentication ---
+    if data.fingerprint_data:
+        async for patient in patients:
+            if patients.get("use_fingerprint") and patient.get("fingerprint_data"):
+                if bcrypt.checkpw(data.fingerprint_data.encode(), patient['fingerprint_data'].encode()):
+                    return _build_patient_response(patient)
+        raise HTTPException(status_code = 404,detail = "Invalid fingerprint data")
+    
+    # --- MediConnect Login ---
+    if data.mediconnect_username and data.password:
+        async for patient in patients:
+            if (patient["mediconnect_username"] == data.mediconnect_username):
+                if bcrypt.checkpw(data.password.encode(),patient['hashed_password'].encode()):
+                    return _build_patient_response(patient)
+                else:
+                    raise HTTPException(status_code = 401, detail = "Invalid Password")
+        raise HTTPException(status_code = 404, detail = "Patient not Found")
+    
+    # --- Driver License ID Login ---
+    if data.first_name and data.last_name and data.driver_license_id:
+        async for patient in patients:
+            try:
+                decrypted_fn = decrypt(patient['first_name']['ciphertext'], patient['first_name']['nonce'])
+                decrypted_ln = decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce'])
+                decrypted_dl = decrypt(patient['driver_license_id']['ciphertext'], patient['driver_license_id']['nonce'])
+            except:
+                continue
+            
+            if decrypted_fn == data.first_name and \
+                decrypted_ln == data.last_name and \
+                decrypted_dl == data.driver_license_id:
+                 return _build_patient_response(patient)
+            raise HTTPException(status_code = 404, detail = "Patient not Found with Matching Details")
+        
+    # --- Missing Fields ---
+    raise HTTPException(status_code = 400, detail = "Insufficient credentials. Provide either (1) MediConnect username and password, (2) name and driver license ID, or (3) fingerprint.")
+
+
+def _build_patient_response(patient):
+    return {
+        "API": "true",  # Replace dynamically once hospital API detection is implemented
+        "portal_name": patient["provider_portal_name"],
+        "auth_username": decrypt(patient['portal_username']['ciphertext'], patient['portal_username']['nonce']),
+        "auth_password": decrypt(patient['portal_password']['ciphertext'], patient['portal_password']['nonce']),
+        "first_name": decrypt(patient['first_name']['ciphertext'], patient['first_name']['nonce']),
+        "middle_name": decrypt(patient['middle_name']['ciphertext'], patient['middle_name']['nonce']),
+        "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce'])
+    #replace with actual patient data once api integration is complete
+    }

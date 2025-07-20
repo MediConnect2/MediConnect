@@ -1,7 +1,8 @@
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import os
 import base64
-
+from dotenv import load_dotenv
+load_dotenv("/Users/aadisaraf/Documents/MediConnect/MediConnect/server_end/.env")
 # Should be a 256-bit (32-byte) key — load securely via environment
 AES_KEY = base64.urlsafe_b64decode(os.getenv("AES_KEY"))
 
