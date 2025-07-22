@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function PatientLoginPage() {
@@ -12,8 +12,41 @@ export default function PatientLoginPage() {
     fingerprint_data: "",
   });
 
-  const [error, setError] = useState("");
   const router = useRouter();
+  useEffect(()=> {
+    const checkToken = async () => {
+        const token = localStorage.getItem('emt_token');
+        if (!token) {
+            alert("Unauthorized: EMT not Logged In");
+            router.push('/');
+        }
+
+        try {
+            const response = await fetch('http://localhost:8000/verify-token', {
+                method: 'GET',
+                headers:{
+                    'Authorization': `Bearer ${token}`,
+                }
+
+            });
+            
+            if (!response.ok) {
+                    throw new Error('Token is invalid');
+            }
+
+            const data =  (await response).json();
+            console.log('Token is valid',data);
+        } catch (error) {
+            console.log(error);
+            localStorage.removeItem('emt_token');
+            alert("Unauthorized: EMT not Logged In");
+            router.push('/');
+        }
+    };
+
+    checkToken();
+  }, [router]);
+  const [error, setError] = useState("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

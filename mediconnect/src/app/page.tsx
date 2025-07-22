@@ -24,8 +24,9 @@ export default function EMTLoginPage() {
 
             const data = await response.json();
             setResult('');
+            localStorage.setItem('emt_token', data['access_token']);  // Store token if needed
+            alert('Login successful! Welcome '+data['emt_info']['first_name']+" "+data['emt_info']['last_name']);  // Notify user
             router.push('/patient-login');  // Redirect
-            alert('Login successful! Welcome '+data['first_name']+" "+data['last_name']);  // Notify user
         } catch (error: any) {
             setResult(`Error: ${error.message}`);
         }

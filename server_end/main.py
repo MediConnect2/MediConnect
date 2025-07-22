@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException, Body
+import os
+from fastapi import Depends, FastAPI, HTTPException, Body, Header
 from pydantic import BaseModel
 from db import patients_collection,emt_collection
 from utils.encryption import encrypt, decrypt
 import bcrypt
 import datetime
+from datetime import timedelta
 from typing import Optional
+from jose import ExpiredSignatureError, jwt, JWTError
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -12,6 +15,9 @@ load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +28,16 @@ app.add_middleware(
 )
 
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.datetime.now(datetime.timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.datetime.now(datetime.timezone.utc)
+    })
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 #EMT Models
 
@@ -71,9 +87,18 @@ async def login_emt(data: LoginEMT):
         "last_name": decrypt(emt['last_name']['ciphertext'], emt['last_name']['nonce']),
         "created_at": emt['created_at'].isoformat()
     }
-    return emt_info
 
+    token_data = {
+        "sub" : data.username,
+        "role": "emt",
+    }
 
+    token = create_access_token(token_data)
+
+    return {
+        "emt_info": emt_info,
+        "access_token": token
+    }
 
 
 #Patient Models
@@ -162,13 +187,22 @@ class PatientLogin(BaseModel):
 @app.post("/patient/login")
 async def login_patient(data:PatientLogin):
     patients = patients_collection.find({})
+    
+    token_data = {
+        "sub": patient["mediconnect_username"],
+        "role": "patient"
+    }
+    token = create_access_token(token_data)
 
     # --- Fingerprint Authentication ---
     if data.fingerprint_data:
         async for patient in patients:
             if patients.get("use_fingerprint") and patient.get("fingerprint_data"):
                 if bcrypt.checkpw(data.fingerprint_data.encode(), patient['fingerprint_data'].encode()):
-                    return _build_patient_response(patient)
+                    return {
+                        "patient_info": _build_patient_response(patient),
+                        "access_token": token
+                    }
         raise HTTPException(status_code = 404,detail = "Invalid fingerprint data")
     
     # --- MediConnect Login ---
@@ -176,7 +210,10 @@ async def login_patient(data:PatientLogin):
         async for patient in patients:
             if (patient["mediconnect_username"] == data.mediconnect_username):
                 if bcrypt.checkpw(data.password.encode(),patient['hashed_password'].encode()):
-                    return _build_patient_response(patient)
+                    return {
+                        "patient_info": _build_patient_response(patient),
+                        "access_token": token
+                    }
                 else:
                     raise HTTPException(status_code = 401, detail = "Invalid Password")
         raise HTTPException(status_code = 404, detail = "Patient not Found")
@@ -194,7 +231,10 @@ async def login_patient(data:PatientLogin):
             if decrypted_fn == data.first_name and \
                 decrypted_ln == data.last_name and \
                 decrypted_dl == data.driver_license_id:
-                 return _build_patient_response(patient)
+                return {
+                    "patient_info": _build_patient_response(patient),
+                    "access_token": token
+                }
             raise HTTPException(status_code = 404, detail = "Patient not Found with Matching Details")
         
     # --- Missing Fields ---
@@ -212,3 +252,24 @@ def _build_patient_response(patient):
         "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce'])
     #replace with actual patient data once api integration is complete
     }
+
+
+
+def verify_token(token:str):
+    try:
+        payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
+        return payload
+    except ExpiredSignatureError:
+        raise HTTPException(status_code = 401, detail = "Token Expired")
+    except JWTError:
+        raise HTTPException(status_code = 401, detail = "Invalid Token")
+    
+def get_current_user(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authentication header")
+    token = authorization.split(" ")[1]
+    return verify_token(token)
+
+@app.get("/verify-token")
+def verify_token_endpoint(current_user: dict = Depends(get_current_user)):
+    return {"status": "ok", "user": current_user}
