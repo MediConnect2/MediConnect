@@ -1,4 +1,43 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root{
+     /* Global Colors */
+    --global-bg-1: #11306a;
+    --global-bg-2: #f4f4f8;
+    --global-text-1: #1f3454;
+    --global-text-2: #ffffff;
+
+    /* Button Colors */
+    --button-bg-1: #5b9eff;
+    --button-text-1: #000000;
+  }
+}
+@layer utilities {
+  /* Global */
+  .bg-global-1 {
+    background-color: var(--global-bg-1);
+  }
+  .bg-global-2 {
+    background-color: var(--global-bg-2);
+  }
+  .text-global-1 {
+    color: var(--global-text-1);
+  }
+  .text-global-2 {
+    color: var(--global-text-2);
+  }
+
+  /* Button */
+  .bg-button-1 {
+    background-color: var(--button-bg-1);
+  }
+  .text-button-1 {
+    color: var(--button-text-1);
+  }
+}
 
 :root {
   --background: #ffffff;
