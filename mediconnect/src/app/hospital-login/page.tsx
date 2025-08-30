@@ -3,48 +3,46 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function EMTLoginPage() {
+export default function HospitalLoginPage() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const router = useRouter();
-    useEffect(() => {
-        const checkToken = async () => {
-          const token = localStorage.getItem('emt_token');
-    
-          try {
-            const response = await fetch('http://localhost:8000/verify-emt-token', {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-              }
-            });
-    
-            if (!response.ok) {
-              localStorage.removeItem('emt_token');
-              throw new Error('Token is invalid');
-            }
-            const data = (await response).json();
-            console.log('Token is valid:pushing to /patient-login', data);
 
-            router.push('/patient-login');
-          } catch (error) {
-            console.log(error);
-            localStorage.removeItem('emt_token');
-            router.push('/');
-          }
-        };
-    
+    useEffect(() =>{
+        const checkToken = async () => {
+            const token = localStorage.getItem('hospital_token');
+            try{
+                const response = await fetch('http://localhost:8000/verify-hospital-token', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    }
+                });
+                if (!response.ok) {
+                    localStorage.removeItem('hospital_token');
+                    throw new Error('Token is invalid');
+                }
+                const data = await response.json();
+                console.log('Token is valid: pushing to /patient-register', data);
+                router.push('/patient-register');
+            } catch (error) {
+                console.log(error);
+                localStorage.removeItem('hospital_token');
+                router.push('/hospital-login');
+            }
+        }
         checkToken();
-      }, [router]);
-    const handleLogin = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
+    }, [router]);
+
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
         setLoading(true);
         setError('');
 
         try {
-            const response = await fetch('http://localhost:8000/emt/login', {
+            const response = await fetch('http://localhost:8000/hospital/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username.toLowerCase(), password })
@@ -56,11 +54,11 @@ export default function EMTLoginPage() {
             }
 
             const data = await response.json();
-            localStorage.setItem('emt_token', data['access_token']);
-            alert('Login successful! Welcome '+data['emt_info']['first_name']+" "+data['emt_info']['last_name']);
-            router.push('/patient-login');
-        } catch (error: any) {
-            setError(error.message);
+            localStorage.setItem('hospital_token', data['access_token']);
+            alert('Login successful! Signed in with ' + data.name);
+            router.push('/patient-register');
+        } catch (err: any) {
+            setError(err.message);
         } finally {
             setLoading(false);
         }
@@ -68,7 +66,7 @@ export default function EMTLoginPage() {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            handleLogin();
+            handleLogin(e as any);
         }
     };
 
@@ -102,7 +100,7 @@ export default function EMTLoginPage() {
                     letterSpacing: '-0.025em',
                     fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
                 }}>
-                    EMT Access
+                    Hospital Login
                 </h1>
                 
                 <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -115,7 +113,7 @@ export default function EMTLoginPage() {
                             fontSize: '0.95rem',
                             fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
                         }}>
-                            EMT Username
+                            Hospital Username
                         </label>
                         <input
                             type="text"
@@ -135,7 +133,7 @@ export default function EMTLoginPage() {
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                 outline: 'none'
                             }}
-                            placeholder="Enter EMT username"
+                            placeholder="Enter hospital username"
                             onFocus={(e) => {
                                 e.target.style.borderColor = '#3b82f6';
                                 e.target.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.1)';
@@ -208,7 +206,7 @@ export default function EMTLoginPage() {
                         disabled={loading}
                         style={{
                             padding: '1rem 2rem',
-                            backgroundColor: loading ? '#9ca3af' : '#dc2626',
+                            backgroundColor: loading ? '#9ca3af' : '#3b82f6',
                             color: 'white',
                             border: 'none',
                             borderRadius: '16px',
@@ -217,44 +215,44 @@ export default function EMTLoginPage() {
                             fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
                             cursor: loading ? 'not-allowed' : 'pointer',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: loading ? 'none' : '0 10px 25px rgba(220, 38, 38, 0.3)',
+                            boxShadow: loading ? 'none' : '0 10px 25px rgba(59, 130, 246, 0.3)',
                             transform: loading ? 'none' : 'translateY(0px)'
                         }}
                         onMouseEnter={(e) => {
                             if (!loading) {
-                                e.currentTarget.style.backgroundColor = '#b91c1c';
+                                e.currentTarget.style.backgroundColor = '#2563eb';
                                 e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 15px 35px rgba(220, 38, 38, 0.4)';
+                                e.currentTarget.style.boxShadow = '0 15px 35px rgba(59, 130, 246, 0.4)';
                             }
                         }}
                         onMouseLeave={(e) => {
                             if (!loading) {
-                                e.currentTarget.style.backgroundColor = '#dc2626';
+                                e.currentTarget.style.backgroundColor = '#3b82f6';
                                 e.currentTarget.style.transform = 'translateY(0px)';
-                                e.currentTarget.style.boxShadow = '0 10px 25px rgba(220, 38, 38, 0.3)';
+                                e.currentTarget.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.3)';
                             }
                         }}
                     >
-                        {loading ? 'Logging in...' : 'Access Emergency Portal'}
+                        {loading ? 'Logging in...' : 'Login to Hospital Portal'}
                     </button>
                 </form>
 
                 <div style={{
                     marginTop: '2rem',
                     padding: '1.25rem',
-                    backgroundColor: '#fef3c7',
+                    backgroundColor: '#f0f9ff',
                     borderRadius: '20px',
-                    border: '2px solid #fbbf24'
+                    border: '2px solid #bae6fd'
                 }}>
                     <p style={{ 
                         margin: 0,
-                        color: '#92400e',
+                        color: '#0c4a6e',
                         fontSize: '0.9rem',
                         lineHeight: '1.6',
                         fontWeight: '500',
                         fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
                     }}>
-                        <strong>Emergency Access:</strong> Please provide your EMT credentials to access the emergency patient portal and provide immediate medical assistance.
+                        <strong>Hospital Access:</strong> Please provide your hospital credentials to access the patient registration system and manage hospital operations.
                     </p>
                 </div>
             </div>

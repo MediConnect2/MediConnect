@@ -1,7 +1,7 @@
 import os
 from fastapi import Depends, FastAPI, HTTPException, Body, Header
 from pydantic import BaseModel
-from db import patients_collection,emt_collection
+from db import patients_collection,emt_collection,hospitals_collection
 from utils.encryption import encrypt, decrypt
 import bcrypt
 import datetime
@@ -38,6 +38,12 @@ def create_access_token(data: dict):
     })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+
+
+
+
 
 #EMT Models
 
@@ -101,6 +107,11 @@ async def login_emt(data: LoginEMT):
     }
 
 
+
+
+
+
+
 #Patient Models
 class RegisterPatient(BaseModel):
     mediconnect_username:str
@@ -114,6 +125,7 @@ class RegisterPatient(BaseModel):
     provider_portal_name:str
     use_fingerprint: bool = False
     fingerprint_data: str | None = None
+
 
 # Patient registration model
 class RegisterPatient(BaseModel):
@@ -131,6 +143,12 @@ class RegisterPatient(BaseModel):
 
 @app.post("/register")
 async def register_patient(data: RegisterPatient):
+    # Check if MediConnect username already exists (if provided)
+    if data.mediconnect_username:
+        existing_patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
+        if existing_patient:
+            raise HTTPException(status_code=409, detail=f"Username '{data.mediconnect_username}' is already taken")
+
     # Credential validation
     if not (
         (data.driver_license_id or data.mediconnect_username)
@@ -169,7 +187,7 @@ async def register_patient(data: RegisterPatient):
     }
 
     await patients_collection.insert_one(doc)
-    return {"status": "success"}
+    return {"status": "success", "message": "Patient registered successfully"}
 
 
 
@@ -188,17 +206,18 @@ class PatientLogin(BaseModel):
 async def login_patient(data:PatientLogin):
     patients = patients_collection.find({})
     
-    token_data = {
-        "sub": patient["mediconnect_username"],
-        "role": "patient"
-    }
-    token = create_access_token(token_data)
+
 
     # --- Fingerprint Authentication ---
     if data.fingerprint_data:
         async for patient in patients:
-            if patients.get("use_fingerprint") and patient.get("fingerprint_data"):
+            if patient.get("use_fingerprint") and patient.get("fingerprint_data"):
                 if bcrypt.checkpw(data.fingerprint_data.encode(), patient['fingerprint_data'].encode()):
+                    token_data = {
+                        "sub": patient["mediconnect_username"],
+                        "role": "patient"
+                    }
+                    token = create_access_token(token_data)
                     return {
                         "patient_info": _build_patient_response(patient),
                         "access_token": token
@@ -210,6 +229,11 @@ async def login_patient(data:PatientLogin):
         async for patient in patients:
             if (patient["mediconnect_username"] == data.mediconnect_username):
                 if bcrypt.checkpw(data.password.encode(),patient['hashed_password'].encode()):
+                    token_data = {
+                        "sub": patient["mediconnect_username"],
+                        "role": "patient"
+                    }
+                    token = create_access_token(token_data)
                     return {
                         "patient_info": _build_patient_response(patient),
                         "access_token": token
@@ -231,6 +255,11 @@ async def login_patient(data:PatientLogin):
             if decrypted_fn == data.first_name and \
                 decrypted_ln == data.last_name and \
                 decrypted_dl == data.driver_license_id:
+                token_data = {
+                        "sub": patient["mediconnect_username"],
+                        "role": "patient"
+                    }
+                token = create_access_token(token_data)
                 return {
                     "patient_info": _build_patient_response(patient),
                     "access_token": token
@@ -255,6 +284,55 @@ def _build_patient_response(patient):
 
 
 
+
+
+# Hospital Username and Password Check Model
+class HospitalUsernamePasswordCheck(BaseModel):
+    username: str
+    password: str
+    name:str | None = None
+
+@app.post("/hospital/login")
+async def check_hospital_credentials(data: HospitalUsernamePasswordCheck):
+    hospitals = hospitals_collection.find({})
+    if data.username and data.password:
+        async for hospital in hospitals:
+            if (hospital['username'] == data.username):
+                if bcrypt.checkpw(data.password.encode(),hospital['hashed_password'].encode()):
+                    token_data = {
+                        "sub":hospital['username'],
+                        "role":"hospital"
+                    }
+                    token = create_access_token(token_data)
+                    return {
+                        "hospital_name":data.name,
+                        "access_token": token
+                    }
+                else:
+                    raise HTTPException(status_code = 401, detail = "Invalid Password")
+        raise HTTPException(status_code = 404, detail = "Hospital not Found")
+
+
+class PatientAccessCredentials(BaseModel):
+    mediconnect_username: str
+    password: str
+    driver_license_id: str
+
+@app.post("/check-patient-access")
+async def check_patient_access_credentials(data: PatientAccessCredentials):
+    patients = patients_collection.find({})
+    
+    if data.mediconnect_username and data.password and data.driver_license_id:
+        async for patient in patients:
+            if (patient['mediconnect_username'] == data.mediconnect_username):
+                if bcrypt.checkpw(data.password.encode(), patient['hashed_password'].encode()):
+                    decrypted_dl = decrypt(patient['driver_license_id']['ciphertext'], patient['driver_license_id']['nonce'])
+                    
+                    if (decrypted_dl == data.driver_license_id):
+                        return {"status": "success", "message": "Patient access verified"}
+        raise HTTPException(status_code = 404, detail = "Patient not Found")
+    else: raise HTTPException(status_code = 400, detail = "Insufficient Credentials Provided.")
+# Token Verification and User Retrieval
 def verify_token(token:str):
     try:
         payload = jwt.decode(token,SECRET_KEY,algorithms=[ALGORITHM])
@@ -264,12 +342,50 @@ def verify_token(token:str):
     except JWTError:
         raise HTTPException(status_code = 401, detail = "Invalid Token")
     
-def get_current_user(authorization: str = Header(...)):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authentication header")
-    token = authorization.split(" ")[1]
-    return verify_token(token)
+# def get_current_user(authorization: str = Header(...)):
+#     if not authorization.startswith("Bearer "):
+#         raise HTTPException(status_code=401, detail="Invalid authentication header")
+#     token = authorization.split(" ")[1]
+#     return verify_token(token)
 
-@app.get("/verify-token")
-def verify_token_endpoint(current_user: dict = Depends(get_current_user)):
-    return {"status": "ok", "user": current_user}
+def get_current_emt(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail = "Invalid authentication header")
+    token = authorization.split(" ")[1]
+    payload = verify_token(token)
+    if payload.get("role") !="emt":
+        raise HTTPException(status_code = 403, detail="EMT access required")
+    return payload
+
+def get_current_hospital(authorization:str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail = "Invalid authentication header")
+    token = authorization.split(" ")[1]
+    payload = verify_token(token)
+    if payload.get("role") != "hospital":
+        raise HTTPException(status_code=403, detail="Hospital access required")
+    return payload
+
+def get_current_patient(authorization:str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail = "Invalid authentication header")
+    token = authorization.split(" ")[1]
+    payload = verify_token(token)
+    if payload.get("role") != "patient":
+        raise HTTPException(status_code=403, detail = "Patient access required")
+    return payload
+
+
+
+@app.get("/verify-emt-token")
+def verify_emt_token_endpoint(current_emt: dict = Depends(get_current_emt)):
+    return {"status": "ok", "user": current_emt}
+
+@app.get("/verify-hospital-token")
+def verify_hospital_token_endpoint(current_hospital: dict = Depends(get_current_hospital)):
+    return {"status": "ok", "user": current_hospital}
+
+@app.get("/verify-patient-token")
+def verify_patient_token_endpoint(current_patient: dict = Depends(get_current_patient)):
+    return {"status": "ok", "user": current_patient}
+

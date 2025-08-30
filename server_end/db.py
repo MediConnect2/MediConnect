@@ -8,3 +8,4 @@ db = client["mediconnect"]
 
 patients_collection = db["patients"]
 emt_collection = db["emt_users"]
+hospitals_collection = db["hospitals"]
