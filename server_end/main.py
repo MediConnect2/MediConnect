@@ -270,6 +270,28 @@ async def login_patient(data:PatientLogin):
     raise HTTPException(status_code = 400, detail = "Insufficient credentials. Provide either (1) MediConnect username and password, (2) name and driver license ID, or (3) fingerprint.")
 
 
+class DeletePatientRequest(BaseModel):
+    mediconnect_username: str
+    mediconnect_password: str
+    driver_license_id: str
+    delete_prompt: str
+
+
+@app.post("/patient/delete")
+async def deletePatient(data: DeletePatientRequest):
+    patients = patients_collection.find({})
+    async for patient in patients:
+        if patient['mediconnect_username'] == data.mediconnect_username:
+            if bcrypt.checkpw(data.mediconnect_password.encode(), patient['hashed_password'].encode()):
+                decrypted_dl = decrypt(patient['driver_license_id']['ciphertext'], patient['driver_license_id']['nonce'])
+                if decrypted_dl == data.driver_license_id:
+                    if data.delete_prompt == "DELETE ACCOUNT":
+                        patients_collection.delete_one({"_id": patient["_id"]})
+                        return {"detail": "Patient record deleted successfully"}
+                    else:
+                        raise HTTPException(status_code=400, detail="Invalid delete prompt.")
+    raise HTTPException(status_code=404, detail="Credentials Incorrect")
+
 def _build_patient_response(patient):
     return {
         "API": "true",  # Replace dynamically once hospital API detection is implemented

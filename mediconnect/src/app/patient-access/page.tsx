@@ -30,6 +30,17 @@ export default function PatientAccessPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Delete account modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteForm, setDeleteForm] = useState({
+    mediconnect_username: '',
+    mediconnect_password: '',
+    driver_license_id: '',
+    delete_prompt: ''
+  });
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -106,6 +117,65 @@ export default function PatientAccessPage() {
     localStorage.removeItem('patient_token');
   };
 
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteLoading(true);
+    setDeleteError('');
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/patient/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(deleteForm)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Account deletion failed');
+      }
+
+      const result = await response.json();
+      alert('Account deleted successfully. You will be redirected to the login page.');
+      
+      // Clear all data and redirect
+      localStorage.removeItem('patient_token');
+      setIsAuthenticated(false);
+      setPatientInfo(null);
+      setShowDeleteModal(false);
+      setAuthForm({
+        mediconnect_username: '',
+        password: '',
+        driver_license_id: ''
+      });
+      
+    } catch (err: any) {
+      setDeleteError(err.message);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleDeleteFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setDeleteForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteForm({
+      mediconnect_username: '',
+      mediconnect_password: '',
+      driver_license_id: '',
+      delete_prompt: ''
+    });
+    setDeleteError('');
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAuthentication(e as any);
@@ -114,13 +184,14 @@ export default function PatientAccessPage() {
 
   if (isAuthenticated && patientInfo) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        paddingTop: '120px',
-        padding: '2rem',
-        fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-      }}>
+      <>
+        <div style={{ 
+          minHeight: '100vh', 
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          paddingTop: '120px',
+          padding: '2rem',
+          fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        }}>
         <div style={{ 
           maxWidth: '1000px', 
           margin: '0 auto',
@@ -439,8 +510,361 @@ export default function PatientAccessPage() {
               This data is encrypted and only accessible with proper authentication credentials.
             </p>
           </div>
+
+          {/* Delete Account Section */}
+          <div style={{
+            marginTop: '3rem',
+            padding: '2rem',
+            backgroundColor: '#fef2f2',
+            borderRadius: '24px',
+            border: '2px solid #fecaca'
+          }}>
+            <h3 style={{ 
+              margin: '0 0 1rem 0',
+              color: '#dc2626',
+              fontSize: '1.3rem',
+              fontWeight: '700',
+              fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+            }}>
+              Account Management
+            </h3>
+            <p style={{ 
+              margin: '0 0 1.5rem 0',
+              color: '#b91c1c',
+              lineHeight: '1.6',
+              fontSize: '1rem',
+              fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+            }}>
+              <strong>Warning:</strong> Deleting your account will permanently remove all your medical information from our system. This action cannot be undone.
+            </p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              style={{
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: 'none',
+                padding: '1rem 2rem',
+                borderRadius: '16px',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: '600',
+                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 4px 20px rgba(220, 38, 38, 0.3)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#b91c1c';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 8px 25px rgba(220, 38, 38, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#dc2626';
+                e.currentTarget.style.transform = 'translateY(0px)';
+                e.currentTarget.style.boxShadow = '0 4px 20px rgba(220, 38, 38, 0.3)';
+              }}
+            >
+              Delete Account
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem',
+          overflowY: 'auto'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '20px',
+            padding: '2rem',
+            maxWidth: '420px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
+            margin: 'auto'
+          }}>
+            <h2 style={{
+              color: '#dc2626',
+              fontSize: '1.5rem',
+              fontWeight: '700',
+              marginBottom: '1rem',
+              textAlign: 'center',
+              fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+            }}>
+              ⚠️ Delete Account
+            </h2>
+            
+            <div style={{
+              padding: '1rem',
+              backgroundColor: '#fef2f2',
+              borderRadius: '12px',
+              border: '2px solid #fecaca',
+              marginBottom: '1.5rem'
+            }}>
+              <p style={{
+                margin: 0,
+                color: '#dc2626',
+                fontWeight: '600',
+                fontSize: '0.9rem',
+                lineHeight: '1.4',
+                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+              }}>
+                <strong>WARNING:</strong> This action is permanent and cannot be undone. All your medical information will be permanently deleted from our system.
+              </p>
+            </div>
+
+            <form onSubmit={handleDeleteAccount} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  color: '#374151',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }}>
+                  MediConnect Username
+                </label>
+                <input
+                  type="text"
+                  name="mediconnect_username"
+                  value={deleteForm.mediconnect_username}
+                  onChange={handleDeleteFormChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    color: '#1f2937',
+                    fontSize: '0.9rem',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    outline: 'none'
+                  }}
+                  placeholder="Enter your username"
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#dc2626';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  color: '#374151',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  name="mediconnect_password"
+                  value={deleteForm.mediconnect_password}
+                  onChange={handleDeleteFormChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    color: '#1f2937',
+                    fontSize: '0.9rem',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    outline: 'none'
+                  }}
+                  placeholder="Enter your password"
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#dc2626';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  color: '#374151',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }}>
+                  Driver License ID
+                </label>
+                <input
+                  type="text"
+                  name="driver_license_id"
+                  value={deleteForm.driver_license_id}
+                  onChange={handleDeleteFormChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    color: '#1f2937',
+                    fontSize: '0.9rem',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    outline: 'none'
+                  }}
+                  placeholder="Enter your driver license ID"
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#dc2626';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  color: '#374151',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }}>
+                  Type "DELETE ACCOUNT" to confirm
+                </label>
+                <input
+                  type="text"
+                  name="delete_prompt"
+                  value={deleteForm.delete_prompt}
+                  onChange={handleDeleteFormChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    color: '#1f2937',
+                    fontSize: '0.9rem',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    outline: 'none'
+                  }}
+                  placeholder="Type DELETE ACCOUNT"
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#dc2626';
+                    e.target.style.boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#e5e7eb';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              {deleteError && (
+                <div style={{
+                  padding: '0.75rem',
+                  backgroundColor: '#fef2f2',
+                  border: '2px solid #fecaca',
+                  borderRadius: '12px',
+                  color: '#dc2626',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                }}>
+                  {deleteError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={closeDeleteModal}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: '#6b7280',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '0.9rem',
+                    fontWeight: '600',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#4b5563';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#6b7280';
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteLoading || deleteForm.delete_prompt !== 'DELETE ACCOUNT'}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: (deleteLoading || deleteForm.delete_prompt !== 'DELETE ACCOUNT') ? '#9ca3af' : '#dc2626',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '0.9rem',
+                    fontWeight: '600',
+                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                    cursor: (deleteLoading || deleteForm.delete_prompt !== 'DELETE ACCOUNT') ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!deleteLoading && deleteForm.delete_prompt === 'DELETE ACCOUNT') {
+                      e.currentTarget.style.backgroundColor = '#b91c1c';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!deleteLoading && deleteForm.delete_prompt === 'DELETE ACCOUNT') {
+                      e.currentTarget.style.backgroundColor = '#dc2626';
+                    }
+                  }}
+                >
+                  {deleteLoading ? 'Deleting...' : 'Delete Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
