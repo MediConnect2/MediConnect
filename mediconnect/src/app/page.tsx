@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8000';
 
 export default function EMTLoginPage() {
     const [username, setUsername] = useState('');
@@ -9,42 +11,14 @@ export default function EMTLoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const router = useRouter();
-    useEffect(() => {
-        const checkToken = async () => {
-          const token = localStorage.getItem('emt_token');
-    
-          try {
-            const response = await fetch('http://localhost:8000/verify-emt-token', {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-              }
-            });
-    
-            if (!response.ok) {
-              localStorage.removeItem('emt_token');
-              throw new Error('Token is invalid');
-            }
-            const data = (await response).json();
-            console.log('Token is valid:pushing to /patient-login', data);
 
-            router.push('/patient-login');
-          } catch (error) {
-            console.log(error);
-            localStorage.removeItem('emt_token');
-            router.push('/');
-          }
-        };
-    
-        checkToken();
-      }, [router]);
     const handleLogin = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         setLoading(true);
         setError('');
 
         try {
-            const response = await fetch('http://localhost:8000/emt/login', {
+            const response = await fetch(`${API_BASE}/emt/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username.toLowerCase(), password })
@@ -57,7 +31,7 @@ export default function EMTLoginPage() {
 
             const data = await response.json();
             localStorage.setItem('emt_token', data['access_token']);
-            alert('Login successful! Welcome '+data['emt_info']['first_name']+" "+data['emt_info']['last_name']);
+            alert(`Login successful! Welcome ${data['emt_info']['first_name']} ${data['emt_info']['last_name']}`);
             router.push('/patient-login');
         } catch (error: any) {
             setError(error.message);
