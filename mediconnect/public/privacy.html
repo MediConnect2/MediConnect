@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediConnect - Privacy Policy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #764ba2;
+            margin-top: 30px;
+        }
+        .last-updated {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+    </style>
+</head>
+<body>
+    <h1>MediConnect - Privacy Policy</h1>
+    <p class="last-updated">Last Updated: October 17, 2025</p>
+    
+    <div class="section">
+        <h2>1. Introduction</h2>
+        <p>
+            MediConnect ("we", "our", or "the Application") is committed to protecting your privacy and maintaining 
+            the confidentiality of your health information. This Privacy Policy explains how we collect, use, and 
+            safeguard your personal health information when you use our FHIR-based medical records access application.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>2. Information We Access</h2>
+        <p>
+            Through your authorization, MediConnect accesses the following types of health information from your 
+            Electronic Health Record (EHR) system:
+        </p>
+        <ul>
+            <li><strong>Patient Demographics:</strong> Name, date of birth, gender, contact information, address</li>
+            <li><strong>Medical Conditions:</strong> Current and past diagnoses, problem lists</li>
+            <li><strong>Allergies:</strong> Drug allergies, food allergies, and other intolerances</li>
+            <li><strong>Medications:</strong> Current medication list and prescription history</li>
+            <li><strong>Vital Signs:</strong> Blood pressure, heart rate, temperature, oxygen saturation</li>
+            <li><strong>Procedures:</strong> Medical procedures and surgical history</li>
+            <li><strong>Immunizations:</strong> Vaccination records</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>3. How We Use Your Information</h2>
+        <p>
+            We access your health information solely for the purpose of providing emergency medical services 
+            and facilitating patient care. Specifically:
+        </p>
+        <ul>
+            <li>To display your medical information to authorized EMTs and healthcare providers</li>
+            <li>To enable quick access to critical medical data during emergency situations</li>
+            <li>To support informed medical decision-making by emergency responders</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>4. Data Storage and Retention</h2>
+        <p>
+            <strong>Important:</strong> MediConnect does NOT permanently store your health information. 
+        </p>
+        <ul>
+            <li>Your health data is retrieved in real-time from your EHR system when accessed</li>
+            <li>Temporary session data (access tokens) are stored only for the duration of your active session</li>
+            <li>All session data is automatically deleted when you log out or your session expires</li>
+            <li>We do not maintain a database of patient health records</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>5. Security Measures</h2>
+        <p>
+            We implement industry-standard security measures to protect your information:
+        </p>
+        <ul>
+            <li><strong>Encryption:</strong> All data transmission uses HTTPS/TLS encryption</li>
+            <li><strong>OAuth 2.0:</strong> Secure authentication through SMART on FHIR protocol</li>
+            <li><strong>No Password Storage:</strong> We never store your EHR login credentials</li>
+            <li><strong>Session Management:</strong> Automatic session timeout and secure token handling</li>
+            <li><strong>Access Controls:</strong> Only authorized healthcare providers can access the application</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>6. HIPAA Compliance</h2>
+        <p>
+            MediConnect is designed to comply with the Health Insurance Portability and Accountability Act (HIPAA) 
+            and the Health Information Technology for Economic and Clinical Health (HITECH) Act. We implement 
+            appropriate administrative, physical, and technical safeguards to protect your Protected Health 
+            Information (PHI).
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>7. Information Sharing</h2>
+        <p>
+            We do NOT sell, rent, or share your health information with third parties, except:
+        </p>
+        <ul>
+            <li>When required by law or legal process</li>
+            <li>To prevent serious harm or ensure public safety</li>
+            <li>With your explicit authorization</li>
+        </ul>
+        <p>
+            Your information is only accessible to authorized EMTs and healthcare providers who are actively 
+            involved in your care.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>8. Your Rights</h2>
+        <p>
+            You have the following rights regarding your health information:
+        </p>
+        <ul>
+            <li><strong>Right to Access:</strong> You can review what information MediConnect accesses</li>
+            <li><strong>Right to Revoke:</strong> You may revoke MediConnect's access at any time through your EHR patient portal</li>
+            <li><strong>Right to Restrict:</strong> You can limit which scopes/data types the application can access</li>
+            <li><strong>Right to Request Corrections:</strong> Contact your healthcare provider to correct inaccurate information in your EHR</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>9. Third-Party Services</h2>
+        <p>
+            MediConnect integrates with:
+        </p>
+        <ul>
+            <li><strong>Epic FHIR Server:</strong> To retrieve your health information (subject to Epic's privacy policies)</li>
+            <li><strong>OAuth Provider:</strong> For secure authentication (Epic's OAuth service)</li>
+        </ul>
+        <p>
+            Please review the privacy policies of these third-party services for information on how they handle your data.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>10. Development and Testing</h2>
+        <p>
+            <strong>Note:</strong> This application is currently in development and uses Epic's sandbox environment for testing. 
+            During this phase:
+        </p>
+        <ul>
+            <li>Only synthetic (test) patient data should be used</li>
+            <li>Real patient information should never be entered into the sandbox environment</li>
+            <li>This application is for demonstration and educational purposes only</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>11. Cookies and Tracking</h2>
+        <p>
+            MediConnect uses session cookies solely for:
+        </p>
+        <ul>
+            <li>Maintaining your authenticated session</li>
+            <li>Storing temporary OAuth state information</li>
+            <li>Ensuring secure communication between your browser and our servers</li>
+        </ul>
+        <p>
+            We do NOT use tracking cookies, analytics cookies, or advertising cookies.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>12. Children's Privacy</h2>
+        <p>
+            MediConnect is designed for use by healthcare providers and emergency medical personnel. 
+            The application is not intended for direct use by children under 13 years of age.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>13. Changes to This Privacy Policy</h2>
+        <p>
+            We may update this Privacy Policy from time to time. We will notify users of any material changes 
+            by updating the "Last Updated" date at the top of this policy. Continued use of the application 
+            after changes indicates acceptance of the updated policy.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>14. Contact Us</h2>
+        <p>
+            If you have questions or concerns about this Privacy Policy or our data practices, please contact:
+        </p>
+        <p>
+            <strong>MediConnect Privacy Office</strong><br>
+            Email: privacy@mediconnect.example.com<br>
+            (Development/Sandbox Application - For Demonstration Purposes Only)
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>15. Breach Notification</h2>
+        <p>
+            In the unlikely event of a data breach affecting your health information, we will:
+        </p>
+        <ul>
+            <li>Notify you within 60 days of discovering the breach</li>
+            <li>Report the breach to appropriate authorities as required by law</li>
+            <li>Take immediate steps to mitigate any harm</li>
+            <li>Implement additional safeguards to prevent future breaches</li>
+        </ul>
+    </div>
+
+    <hr style="margin: 40px 0; border: none; border-top: 1px solid #ddd;">
+    
+    <p style="text-align: center; color: #666; font-size: 14px;">
+        &copy; 2025 MediConnect. Development Version - Epic Sandbox Integration.<br>
+        For testing and demonstration purposes only.
+    </p>
+</body>
+</html>

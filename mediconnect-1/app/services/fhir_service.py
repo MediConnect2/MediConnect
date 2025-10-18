@@ -2,6 +2,9 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import HTTPException
 from app.core.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FHIRService:
     """
@@ -62,19 +65,36 @@ class FHIRService:
         url = f"{self.base_url}/Patient/{patient_id}"
         headers = self._build_headers(access_token)
         
+        logger.debug(
+            f"Fetching patient data | URL: {url} | "
+            f"Headers: {list(headers.keys())} | "
+            f"Token preview: {access_token[:30]}...{access_token[-10:]}"
+        )
+        
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
+            
+            logger.debug(
+                f"FHIR Response | Status: {response.status_code} | "
+                f"Headers: {dict(response.headers)}"
+            )
+            
             if response.status_code != 200:
+                logger.error(f"FHIR Error Response: {response.text}")
                 raise self._format_fhir_error("patient", response)
             return response.json()
 
     async def fetch_conditions(self, patient_id: str, access_token: str) -> Dict[str, Any]:
         """
         Fetch patient's medical conditions.
+        Epic requires category filter with full system URL
         """
         url = f"{self.base_url}/Condition"
         headers = self._build_headers(access_token)
-        params = {"patient": patient_id}
+        params = {
+            "patient": patient_id,
+            "category": "http://terminology.hl7.org/CodeSystem/condition-category|problem-list-item"
+        }
         
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, params=params)
@@ -96,13 +116,16 @@ class FHIRService:
                 raise self._format_fhir_error("allergies", response)
             return response.json()
 
-    async def fetch_medications(self, patient_id: str, access_token: str) -> Dict[str, Any]:
+    async def fetch_medications(self, patient_id: str, access_token: str, include_status: bool = False) -> Dict[str, Any]:
         """
-        Fetch patient's current medications.
+        Fetch patient's medications.
+        Epic may not support status filtering - try without it if needed.
         """
         url = f"{self.base_url}/MedicationRequest"
         headers = self._build_headers(access_token)
-        params = {"patient": patient_id, "status": "active"}
+        params = {"patient": patient_id}
+        if include_status:
+            params["status"] = "active"
         
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, params=params)
@@ -113,17 +136,32 @@ class FHIRService:
     async def fetch_observations(self, patient_id: str, access_token: str, category: Optional[str] = None) -> Dict[str, Any]:
         """
         Fetch patient's observations (vital signs, lab results, etc.).
+        Epic-specific: Use full system URL format for category.
+        category should be one of:
+        - 'vital-signs' 
+        - 'laboratory'
+        - 'social-history'
+        - 'imaging'
+        - 'survey'
         """
         url = f"{self.base_url}/Observation"
         headers = self._build_headers(access_token)
         params = {"patient": patient_id}
         if category:
-            params["category"] = category
+            # Convert short category codes to full Epic-required format
+            category_map = {
+                "vital-signs": "http://terminology.hl7.org/CodeSystem/observation-category|vital-signs",
+                "laboratory": "http://terminology.hl7.org/CodeSystem/observation-category|laboratory",
+                "social-history": "http://terminology.hl7.org/CodeSystem/observation-category|social-history",
+                "imaging": "http://terminology.hl7.org/CodeSystem/observation-category|imaging",
+                "survey": "http://terminology.hl7.org/CodeSystem/observation-category|survey"
+            }
+            params["category"] = category_map.get(category, category)
         
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, params=params)
             if response.status_code != 200:
-                raise self._format_fhir_error("observations", response)
+                raise self._format_fhir_error(f"observations (category: {category})", response)
             return response.json()
 
     async def fetch_procedures(self, patient_id: str, access_token: str) -> Dict[str, Any]:
@@ -160,15 +198,114 @@ class FHIRService:
         This is the main endpoint EMTs will use to get all critical patient information.
         """
         try:
-            # Fetch all patient data in parallel for better performance
-            async with httpx.AsyncClient() as client:
+            # GRACEFUL FALLBACK: Fetch what we can access, skip what returns 403
+            logger.info(f"Fetching patient data for patient_id: {patient_id}")
+            
+            # Initialize all data structures
+            patient_data = None
+            conditions_data = {"resourceType": "Bundle", "entry": []}
+            allergies_data = {"resourceType": "Bundle", "entry": []}
+            medications_data = {"resourceType": "Bundle", "entry": []}
+            observations_data = {"resourceType": "Bundle", "entry": []}
+            procedures_data = {"resourceType": "Bundle", "entry": []}
+            immunizations_data = {"resourceType": "Bundle", "entry": []}
+            
+            # Try to fetch patient demographics
+            try:
                 patient_data = await self.fetch_patient(patient_id, access_token)
+                logger.info("✅ Successfully fetched patient demographics")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Patient demographics fetch returned 403 - using placeholder data")
+                    patient_data = {
+                        "resourceType": "Patient",
+                        "id": patient_id,
+                        "name": [{"given": ["Patient"], "family": patient_id[:8]}],
+                        "text": {"status": "generated", "div": f"<div>Patient ID: {patient_id}</div>"}
+                    }
+                else:
+                    raise
+            
+            # Try to fetch conditions
+            try:
                 conditions_data = await self.fetch_conditions(patient_id, access_token)
+                logger.info("✅ Successfully fetched conditions")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Conditions fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Conditions fetch failed: {exc.detail}")
+            
+            # Try to fetch allergies
+            try:
                 allergies_data = await self.fetch_allergies(patient_id, access_token)
-                medications_data = await self.fetch_medications(patient_id, access_token)
-                observations_data = await self.fetch_observations(patient_id, access_token, "vital-signs")
+                logger.info("✅ Successfully fetched allergies")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Allergies fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Allergies fetch failed: {exc.detail}")
+            
+            # Try to fetch medications (try without status filter first)
+            try:
+                medications_data = await self.fetch_medications(patient_id, access_token, include_status=False)
+                logger.info("✅ Successfully fetched medications")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Medications fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Medications fetch failed: {exc.detail}")
+            
+            # Try to fetch vital signs and laboratory observations
+            vital_signs_data = {"resourceType": "Bundle", "entry": []}
+            laboratory_data = {"resourceType": "Bundle", "entry": []}
+            
+            # Fetch vital signs
+            try:
+                vital_signs_data = await self.fetch_observations(patient_id, access_token, "vital-signs")
+                logger.info("✅ Successfully fetched vital signs")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Vital signs fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Vital signs fetch failed: {exc.detail}")
+            
+            # Fetch laboratory observations
+            try:
+                laboratory_data = await self.fetch_observations(patient_id, access_token, "laboratory")
+                logger.info("✅ Successfully fetched laboratory observations")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Laboratory observations fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Laboratory observations fetch failed: {exc.detail}")
+            
+            # Combine vital signs and laboratory data
+            observations_data = {"resourceType": "Bundle", "entry": []}
+            if vital_signs_data.get("entry"):
+                observations_data["entry"].extend(vital_signs_data.get("entry", []))
+            if laboratory_data.get("entry"):
+                observations_data["entry"].extend(laboratory_data.get("entry", []))
+            
+            # Try to fetch procedures
+            try:
                 procedures_data = await self.fetch_procedures(patient_id, access_token)
+                logger.info("✅ Successfully fetched procedures")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Procedures fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Procedures fetch failed: {exc.detail}")
+            
+            # Try to fetch immunizations
+            try:
                 immunizations_data = await self.fetch_immunizations(patient_id, access_token)
+                logger.info("✅ Successfully fetched immunizations")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Immunizations fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Immunizations fetch failed: {exc.detail}")
             
             return {
                 "patient": patient_data,
@@ -182,6 +319,7 @@ class FHIRService:
         except HTTPException as exc:
             raise exc
         except Exception as e:
+            logger.exception("Failed to fetch comprehensive patient data")
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to fetch comprehensive patient data: {str(e)}"

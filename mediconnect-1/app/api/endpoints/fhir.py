@@ -31,6 +31,15 @@ def _resolve_auth(request: Request, require_patient_id: bool = True):
         raise HTTPException(status_code=401, detail="Missing access token. Please login again.")
 
     patient_id = request.session.get('patient_id') or entry.get('patient_id')
+    is_practitioner = entry.get('is_practitioner', False)
+    
+    # Check if user logged in as practitioner instead of patient
+    if patient_id == "PRACTITIONER_LOGIN" or is_practitioner:
+        raise HTTPException(
+            status_code=400,
+            detail="You are logged in as a practitioner, not a patient. To access patient data, please log in using patient credentials from Epic's sandbox. Patient test accounts typically have usernames like 'fhircamila' or 'fhirjason'. Check Epic's documentation for available test patient accounts."
+        )
+    
     if require_patient_id and not patient_id:
         raise HTTPException(status_code=401, detail="No patient context available. Please login again.")
 

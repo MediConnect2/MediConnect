@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     client_id: str = os.getenv("CLIENT_ID", "")
     client_secret: str = os.getenv("CLIENT_SECRET", "")
     
+    # JWT Key for Backend Services / Public Client
+    jwt_signing_key: str = os.getenv("JWT_SIGNING_KEY", "")
+    
+    # Patient Portal Authorization URL (optional override)
+    patient_authorization_url: str = os.getenv("PATIENT_AUTHORIZATION_URL", "")
+    
     # Application Configuration
     app_name: str = "MediConnect"
     app_version: str = "1.0.0"
@@ -26,7 +32,11 @@ class Settings(BaseSettings):
     session_secret_key: str = os.getenv("SESSION_SECRET_KEY", "your-secret-key-change-in-production")
     
     # SMART on FHIR Scopes
-    fhir_scopes: str = os.getenv("FHIR_SCOPES", "openid fhirUser launch/patient patient/Patient.read patient/Observation.read patient/Condition.read patient/AllergyIntolerance.read patient/MedicationRequest.read patient/Procedure.read patient/Immunization.read")
+    fhir_scopes: str = os.getenv(
+        "FHIR_SCOPES",
+        "openid fhirUser patient/Patient.read patient/Observation.read patient/Condition.read "
+        "patient/AllergyIntolerance.read patient/MedicationRequest.read patient/Procedure.read patient/Immunization.read",
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

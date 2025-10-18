@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
@@ -26,6 +26,8 @@ interface PatientData {
 interface AuthStatus {
   authenticated: boolean;
   patient_id?: string;
+  is_practitioner?: boolean;
+  patient_context_available?: boolean;
   token_type?: string;
   scope?: string;
   fhir_user?: string;
@@ -80,36 +82,7 @@ export default function FHIRAccessPage() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
 
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/auth-status`, {
-        credentials: 'include' // Important: include session cookies
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to check authentication status');
-      }
-
-      const status = await response.json();
-      setAuthStatus(status);
-
-      if (!status.authenticated) {
-        setError('Not authenticated. Please login first.');
-      } else {
-        setError('');
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPatientData = async () => {
+  const fetchPatientData = useCallback(async () => {
     setLoading(true);
     setError('');
 
@@ -138,10 +111,60 @@ export default function FHIRAccessPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/auth-status`, {
+        credentials: 'include' // Important: include session cookies
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to check authentication status');
+      }
+
+      const status = await response.json();
+      setAuthStatus(status);
+
+      if (!status.authenticated) {
+        setError('Not authenticated. Please login first.');
+      } else {
+        setError('');
+        const hasPatientContext = Boolean(
+          status.patient_context_available ??
+          (status.patient_id && status.patient_id !== 'PRACTITIONER_LOGIN' && status.patient_id !== 'Unknown')
+        );
+        if (hasPatientContext) {
+          await fetchPatientData();
+        }
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchPatientData]);
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const isPractitionerLogin = Boolean(
+    authStatus?.is_practitioner || authStatus?.patient_id === 'PRACTITIONER_LOGIN'
+  );
+  const patientContextAvailable = Boolean(
+    authStatus?.patient_context_available ??
+      (authStatus?.patient_id && authStatus.patient_id !== 'Unknown' && authStatus.patient_id !== 'PRACTITIONER_LOGIN')
+  );
+  const missingPatientContext = authStatus?.authenticated && !isPractitionerLogin && !patientContextAvailable;
 
   const handleLogin = () => {
-    // Redirect to the FastAPI login endpoint
+    // Redirect to the FastAPI patient login endpoint (patient portal)
+    window.location.href = `${API_BASE}/patient-login`;
+  };
+
+  const handleProviderLogin = () => {
+    // Redirect to the FastAPI provider login endpoint
     window.location.href = `${API_BASE}/login`;
   };
 
@@ -335,13 +358,18 @@ export default function FHIRAccessPage() {
             </ul>
           </div>
 
-          <button onClick={handleLogin} style={styles.primaryButton}>
-            🔑 Login with EHR System
-          </button>
+          <div style={styles.buttonGroup}>
+            <button onClick={handleLogin} style={styles.primaryButton}>
+              � Patient Portal Login
+            </button>
+            <button onClick={handleProviderLogin} style={styles.secondaryButton}>
+              🏥 Provider/Practitioner Login
+            </button>
+          </div>
 
           <div style={styles.helpText}>
-            <p><strong>Note:</strong> This will redirect you to the EHR login page.</p>
-            <p>Use your authorized EMT credentials to access patient data.</p>
+            <p><strong>For Patients:</strong> Click "Patient Portal Login" and use patient test credentials (e.g., fhircamila, fhirjason)</p>
+            <p><strong>For Providers:</strong> Click "Provider/Practitioner Login" and use EMT/provider credentials</p>
           </div>
         </div>
       </div>
@@ -363,6 +391,27 @@ export default function FHIRAccessPage() {
           Logout
         </button>
       </div>
+
+        {isPractitionerLogin && (
+          <div style={styles.warningBox}>
+            <strong>Practitioner login detected.</strong>
+            <p>
+              You authenticated with a practitioner account, which does not include a patient launch context. Log out and
+              sign in using a SMART-on-FHIR patient test account (for example <code>fhircamila</code> or
+              <code>fhirjason</code>) to view patient data.
+            </p>
+          </div>
+        )}
+
+        {!isPractitionerLogin && missingPatientContext && (
+          <div style={styles.warningBox}>
+            <strong>No patient context returned.</strong>
+            <p>
+              The EHR did not supply a patient identifier for this session. Re-launch the SMART flow and ensure the account
+              you use is provisioned for patient portal access.
+            </p>
+          </div>
+        )}
 
       <div style={styles.credentialsCard}>
         <h2 style={styles.sectionTitle}>🔐 Authentication Details</h2>
@@ -426,13 +475,19 @@ export default function FHIRAccessPage() {
         <div style={styles.card}>
           <h2>Ready to Load Patient Data</h2>
           <p>Click the button below to fetch comprehensive patient information from the FHIR server.</p>
-          <button 
-            onClick={fetchPatientData} 
+          <button
+            onClick={fetchPatientData}
             style={styles.primaryButton}
-            disabled={loading}
+            disabled={loading || isPractitionerLogin || missingPatientContext}
           >
             {loading ? '⏳ Loading...' : '📋 Load Patient Data'}
           </button>
+          {(isPractitionerLogin || missingPatientContext) && (
+            <p style={styles.helpText}>
+              Unable to load data because the session lacks a patient launch context. Log out and sign in with a patient
+              portal account provided by Epic’s sandbox to continue.
+            </p>
+          )}
         </div>
       ) : (
         <div style={styles.dataContainer}>
@@ -684,7 +739,7 @@ export default function FHIRAccessPage() {
 // Styles
 const TEXT_COLOR = '#000000';
 
-const styles: { [key: string]: React.CSSProperties } = {
+const styles: Record<string, CSSProperties> = {
   container: {
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -700,6 +755,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '1.5rem',
     borderRadius: '16px',
     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+  },
+  warningBox: {
+    backgroundColor: 'rgba(255, 243, 205, 0.95)',
+    border: '1px solid #f0ad4e',
+    color: '#8a6d3b',
+    padding: '1rem 1.5rem',
+    borderRadius: '12px',
+    marginBottom: '1.5rem',
+    lineHeight: 1.5,
   },
   headerTitle: {
     color: TEXT_COLOR,
@@ -842,17 +906,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: '1rem',
     paddingLeft: '1.5rem',
   },
+  buttonGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+    marginTop: '1.5rem',
+  },
   primaryButton: {
     width: '100%',
     padding: '1rem',
     backgroundColor: '#4299e1',
-    color: TEXT_COLOR,
+    color: '#ffffff',
     border: '1px solid #2b6cb0',
     borderRadius: '8px',
     fontSize: '1.1rem',
     fontWeight: '600',
     cursor: 'pointer',
-    marginTop: '1rem',
+  },
+  secondaryButton: {
+    width: '100%',
+    padding: '1rem',
+    backgroundColor: '#ffffff',
+    color: '#4299e1',
+    border: '2px solid #4299e1',
+    borderRadius: '8px',
+    fontSize: '1.1rem',
+    fontWeight: '600',
+    cursor: 'pointer',
   },
   helpText: {
     marginTop: '1.5rem',
@@ -925,7 +1005,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '1rem 1.5rem',
     backgroundColor: 'transparent',
     border: 'none',
-    borderBottom: '3px solid transparent',
+    borderBottomWidth: '3px',
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'transparent',
     cursor: 'pointer',
     fontSize: '1rem',
     fontWeight: '600',
