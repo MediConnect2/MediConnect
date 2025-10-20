@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -383,6 +383,22 @@ async def callback(request: Request):
             # For provider login, use Authlib's authorize_access_token
             token = await oauth.ehr.authorize_access_token(request)
             
+        # Log granted scopes for debugging
+        granted_scopes = token.get('scope', '')
+        requested_scopes = settings.fhir_scopes
+        
+        logger.info(f"🔑 REQUESTED SCOPES: {requested_scopes}")
+        logger.info(f"✅ GRANTED SCOPES: {granted_scopes}")
+        
+        # Check if any requested scopes were denied
+        if granted_scopes:
+            granted_set = set(granted_scopes.split())
+            requested_set = set(requested_scopes.split())
+            missing_scopes = requested_set - granted_set
+            if missing_scopes:
+                logger.warning(f"⚠️ DENIED SCOPES (not granted by Epic): {' '.join(missing_scopes)}")
+                logger.warning(f"⚠️ These scopes may not be configured in your Epic app. Check: https://fhir.epic.com/Developer/Apps")
+        
         log_debug(
             "Access token received",
             token_keys=list(token.keys()),
@@ -572,6 +588,78 @@ async def check_auth_status(request: Request):
         token_store_has_entry=session_id in token_store if session_id else False,
     )
     return {"authenticated": False}
+
+@app.get("/api/scope-diagnostic")
+async def scope_diagnostic(request: Request):
+    """
+    Diagnostic endpoint to check which scopes were requested vs granted.
+    Helps debug 403 Forbidden errors.
+    """
+    session_id = request.session.get('session_id')
+    
+    # Debug logging
+    logger.info(f"Scope diagnostic: session_id={session_id}, session_keys={list(request.session.keys())}")
+    logger.info(f"Token store has session: {session_id in token_store if session_id else False}")
+    
+    if not session_id or session_id not in token_store:
+        return {
+            "authenticated": False,
+            "error": "Not authenticated. Please log in first.",
+            "requested_scopes": settings.fhir_scopes.split(),
+            "granted_scopes": [],
+            "missing_scopes": settings.fhir_scopes.split(),
+            "message": "Please log in at http://localhost:3000/fhir-access first"
+        }
+    
+    entry = token_store[session_id]
+    token = entry.get('token', {})
+    
+    requested_scopes = settings.fhir_scopes.split()
+    granted_scopes_str = token.get('scope', '')
+    granted_scopes = granted_scopes_str.split() if granted_scopes_str else []
+    
+    missing_scopes = [s for s in requested_scopes if s not in granted_scopes]
+    
+    scope_details = []
+    for scope in requested_scopes:
+        status = "✅ GRANTED" if scope in granted_scopes else "❌ DENIED"
+        resource_type = ""
+        
+        if "Patient" in scope:
+            resource_type = "Demographics"
+        elif "Observation" in scope:
+            resource_type = "Vital Signs, Lab Results, Smoking History"
+        elif "Condition" in scope:
+            resource_type = "Medical Conditions, Diagnoses"
+        elif "AllergyIntolerance" in scope:
+            resource_type = "Allergies"
+        elif "MedicationRequest" in scope:
+            resource_type = "Medications"
+        elif "Procedure" in scope:
+            resource_type = "Procedures, Surgeries"
+        elif "Immunization" in scope:
+            resource_type = "Vaccinations"
+        
+        scope_details.append({
+            "scope": scope,
+            "status": status,
+            "granted": scope in granted_scopes,
+            "resource_type": resource_type
+        })
+    
+    return {
+        "requested_scopes": requested_scopes,
+        "granted_scopes": granted_scopes,
+        "missing_scopes": missing_scopes,
+        "scope_details": scope_details,
+        "has_observation_scope": "patient/Observation.read" in granted_scopes,
+        "epic_app_url": "https://fhir.epic.com/Developer/Apps",
+        "message": (
+            "All requested scopes were granted! ✅" 
+            if not missing_scopes 
+            else f"⚠️ {len(missing_scopes)} scope(s) were not granted. You need to configure these in your Epic app settings."
+        )
+    }
 
 @app.post("/api/logout")
 async def logout(request: Request):

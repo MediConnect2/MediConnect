@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Scope Check</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: #1a202c; margin-top: 0; }
+        button {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover { background: #3182ce; }
+        #output {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .granted { color: #48bb78; font-weight: bold; }
+        .denied { color: #f56565; font-weight: bold; }
+        .info { color: #4299e1; }
+        .warning { color: #ed8936; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔍 Quick Scope Check</h1>
+        <p>Click the button below to check which FHIR scopes Epic granted to your session.</p>
+        <p><strong>Make sure you're logged in first at:</strong> <a href="http://localhost:3000/fhir-access" target="_blank">http://localhost:3000/fhir-access</a></p>
+        
+        <button onclick="checkScopes()">Check My Scopes</button>
+        <button onclick="checkAuthStatus()">Check Auth Status</button>
+        <button onclick="testObservations()">Test Observations Endpoint</button>
+        
+        <div id="output"></div>
+    </div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message, className = '') {
+            const div = document.createElement('div');
+            div.textContent = message;
+            if (className) div.className = className;
+            output.appendChild(div);
+        }
+        
+        function clear() {
+            output.innerHTML = '';
+        }
+        
+        async function checkAuthStatus() {
+            clear();
+            log('🔍 Checking authentication status...\n', 'info');
+            
+            try {
+                const response = await fetch('https://localhost:8000/api/auth-status', {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    log('❌ Request failed with status: ' + response.status, 'denied');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (!data.authenticated) {
+                    log('❌ NOT AUTHENTICATED', 'denied');
+                    log('\nPlease log in at: http://localhost:3000/fhir-access');
+                    return;
+                }
+                
+                log('✅ AUTHENTICATED!', 'granted');
+                log(`\nPatient ID: ${data.patient_id}`);
+                log(`Token Type: ${data.token_type}`);
+                log(`\nGranted Scopes:`, 'info');
+                
+                if (data.scope) {
+                    const scopes = data.scope.split(' ');
+                    scopes.forEach(scope => {
+                        log(`  • ${scope}`);
+                    });
+                    
+                    // Check for important scopes
+                    log('\n📊 Scope Analysis:', 'info');
+                    const hasObservation = scopes.includes('patient/Observation.read');
+                    const hasCondition = scopes.includes('patient/Condition.read');
+                    const hasMedication = scopes.includes('patient/MedicationRequest.read');
+                    
+                    if (hasObservation) {
+                        log('  ✅ patient/Observation.read - GRANTED', 'granted');
+                    } else {
+                        log('  ❌ patient/Observation.read - NOT GRANTED (needed for smoking history!)', 'denied');
+                    }
+                    
+                    if (hasCondition) {
+                        log('  ✅ patient/Condition.read - GRANTED', 'granted');
+                    } else {
+                        log('  ❌ patient/Condition.read - NOT GRANTED', 'denied');
+                    }
+                    
+                    if (hasMedication) {
+                        log('  ✅ patient/MedicationRequest.read - GRANTED', 'granted');
+                    } else {
+                        log('  ❌ patient/MedicationRequest.read - NOT GRANTED', 'denied');
+                    }
+                    
+                    if (!hasObservation || !hasCondition || !hasMedication) {
+                        log('\n⚠️  MISSING SCOPES DETECTED!', 'warning');
+                        log('\nFix at: https://fhir.epic.com/Developer/Apps', 'info');
+                        log('1. Find your app (Client ID: 1a3aabaa-38dd-4a03-ac3a-38de1c40cae2)');
+                        log('2. Edit Application → FHIR Scopes');
+                        log('3. Move missing scopes from "Available" to "Selected"');
+                        log('4. Save, then logout and login again');
+                    } else {
+                        log('\n🎉 All critical scopes granted!', 'granted');
+                    }
+                } else {
+                    log('⚠️  No scope information available', 'warning');
+                }
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'denied');
+                log('\nMake sure:');
+                log('1. Backend is running (https://localhost:8000)');
+                log('2. You are logged in');
+                log('3. You accept the self-signed certificate');
+            }
+        }
+        
+        async function checkScopes() {
+            clear();
+            log('🔍 Checking scope configuration...\n', 'info');
+            
+            try {
+                const response = await fetch('https://localhost:8000/api/scope-diagnostic', {
+                    credentials: 'include'
+                });
+                
+                if (response.status === 401) {
+                    log('❌ NOT AUTHENTICATED', 'denied');
+                    log('\nPlease log in at: http://localhost:3000/fhir-access');
+                    return;
+                }
+                
+                if (!response.ok) {
+                    log('❌ Request failed with status: ' + response.status, 'denied');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                log(`📊 Scope Analysis:`, 'info');
+                log(`  Requested: ${data.requested_scopes.length} scopes`);
+                log(`  Granted:   ${data.granted_scopes.length} scopes`);
+                log(`  Denied:    ${data.missing_scopes.length} scopes\n`);
+                
+                if (data.granted_scopes.length > 0) {
+                    log('✅ Granted Scopes:', 'granted');
+                    data.granted_scopes.forEach(scope => log(`  • ${scope}`));
+                }
+                
+                if (data.missing_scopes.length > 0) {
+                    log('\n❌ Denied Scopes (NOT configured in Epic):', 'denied');
+                    data.missing_scopes.forEach(scope => log(`  • ${scope}`));
+                    
+                    log('\n⚠️  FIX REQUIRED:', 'warning');
+                    log('\n1. Go to: https://fhir.epic.com/Developer/Apps', 'info');
+                    log('2. Find app: Client ID 1a3aabaa-38dd-4a03-ac3a-38de1c40cae2');
+                    log('3. Edit Application → Find "FHIR Scopes" section');
+                    log('4. Move missing scopes from "Available" to "Selected"');
+                    log('5. Save the app');
+                    log('6. Logout and login again to get fresh token');
+                } else {
+                    log('\n🎉 All requested scopes were granted!', 'granted');
+                }
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'denied');
+            }
+        }
+        
+        async function testObservations() {
+            clear();
+            log('🧪 Testing Observation endpoint...\n', 'info');
+            
+            try {
+                const response = await fetch('https://localhost:8000/api/vital-signs', {
+                    credentials: 'include'
+                });
+                
+                log(`Response Status: ${response.status} ${response.statusText}`);
+                
+                if (response.status === 403) {
+                    log('\n❌ 403 FORBIDDEN - This is a SCOPE issue!', 'denied');
+                    log('\nEpic is REJECTING your request because:', 'warning');
+                    log('  • patient/Observation.read scope was NOT granted');
+                    log('  • Your Epic app needs to be configured with this scope');
+                    log('\nThis is NOT a data availability issue.');
+                    log('If Epic had no data, you would get 200 OK with empty results.');
+                    log('But you are getting 403, which means permission denied.');
+                    
+                } else if (response.status === 200) {
+                    const data = await response.json();
+                    log('\n✅ SUCCESS! Observation endpoint is accessible', 'granted');
+                    
+                    if (data.entry && data.entry.length > 0) {
+                        log(`\nFound ${data.entry.length} observation(s)!`);
+                    } else {
+                        log('\nNo observations in response (patient may not have data)');
+                    }
+                } else {
+                    log(`\n⚠️  Unexpected status: ${response.status}`, 'warning');
+                }
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'denied');
+            }
+        }
+        
+        // Auto-run on page load if logged in
+        window.addEventListener('load', () => {
+            log('👋 Welcome! Click a button above to start testing.\n', 'info');
+            log('Make sure you are logged in first!\n');
+        });
+    </script>
+</body>
+</html>

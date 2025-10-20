@@ -135,14 +135,17 @@ class FHIRService:
 
     async def fetch_observations(self, patient_id: str, access_token: str, category: Optional[str] = None) -> Dict[str, Any]:
         """
-        Fetch patient's observations (vital signs, lab results, etc.).
+        Fetch patient's observations (vital signs, lab results, social history including smoking status, etc.).
         Epic-specific: Use full system URL format for category.
         category should be one of:
-        - 'vital-signs' 
-        - 'laboratory'
-        - 'social-history'
-        - 'imaging'
-        - 'survey'
+        - 'vital-signs' - Blood pressure, heart rate, temperature, etc.
+        - 'laboratory' - Lab results, blood tests, etc.
+        - 'social-history' - Smoking status, alcohol use, etc. ⚠️ IMPORTANT FOR SMOKING HISTORY
+        - 'imaging' - Radiology observations
+        - 'survey' - Survey/questionnaire responses
+        
+        NOTE: If you get 403 Forbidden, the patient/Observation.read scope was not granted by Epic.
+        Check your Epic app configuration: https://fhir.epic.com/Developer/Apps
         """
         url = f"{self.base_url}/Observation"
         headers = self._build_headers(access_token)
@@ -158,11 +161,19 @@ class FHIRService:
             }
             params["category"] = category_map.get(category, category)
         
+        logger.info(f"🔍 TEST: Fetching observations WITH category={category}: URL={url}, params={params}")
+        
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers, params=params)
-            if response.status_code != 200:
+            logger.info(f"🔍 TEST: Observation response status={response.status_code}, category={category}")
+            if response.status_code == 200:
+                data = response.json()
+                entry_count = len(data.get("entry", []))
+                logger.info(f"✅ SUCCESS! Got {entry_count} observation entries for category={category}")
+                return data
+            else:
+                logger.warning(f"❌ FAILED: {response.status_code} for category={category}")
                 raise self._format_fhir_error(f"observations (category: {category})", response)
-            return response.json()
 
     async def fetch_procedures(self, patient_id: str, access_token: str) -> Dict[str, Any]:
         """
@@ -256,9 +267,10 @@ class FHIRService:
                 else:
                     logger.error(f"❌ Medications fetch failed: {exc.detail}")
             
-            # Try to fetch vital signs and laboratory observations
+            # Try to fetch vital signs, laboratory, and social history observations
             vital_signs_data = {"resourceType": "Bundle", "entry": []}
             laboratory_data = {"resourceType": "Bundle", "entry": []}
+            social_history_data = {"resourceType": "Bundle", "entry": []}
             
             # Fetch vital signs
             try:
@@ -280,12 +292,24 @@ class FHIRService:
                 else:
                     logger.error(f"❌ Laboratory observations fetch failed: {exc.detail}")
             
-            # Combine vital signs and laboratory data
+            # Fetch social history (smoking status, alcohol use, etc.) - CRITICAL FOR SMOKING HISTORY
+            try:
+                social_history_data = await self.fetch_observations(patient_id, access_token, "social-history")
+                logger.info("✅ Successfully fetched social history (smoking status, etc.)")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    logger.warning("⚠️ Social history fetch returned 403 - scope not granted")
+                else:
+                    logger.error(f"❌ Social history fetch failed: {exc.detail}")
+            
+            # Combine all observation data
             observations_data = {"resourceType": "Bundle", "entry": []}
             if vital_signs_data.get("entry"):
                 observations_data["entry"].extend(vital_signs_data.get("entry", []))
             if laboratory_data.get("entry"):
                 observations_data["entry"].extend(laboratory_data.get("entry", []))
+            if social_history_data.get("entry"):
+                observations_data["entry"].extend(social_history_data.get("entry", []))
             
             # Try to fetch procedures
             try:
