@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
+
 interface PatientData {
   first_name: string;
   last_name: string;
@@ -60,7 +62,7 @@ export default function PatientLoginPage() {
       }
 
       try {
-        const response = await fetch('http://localhost:8000/verify-emt-token', {
+        const response = await fetch(`${API_BASE}/verify-emt-token`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -86,7 +88,7 @@ export default function PatientLoginPage() {
       const patientToken = localStorage.getItem('patient_token');
       if (patientToken) {
         try {
-          const response = await fetch('http://localhost:8000/verify-patient-token', {
+          const response = await fetch(`${API_BASE}/verify-patient-token`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${patientToken}`,
@@ -296,7 +298,7 @@ export default function PatientLoginPage() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/verify-emt-token', {
+      const response = await fetch(`${API_BASE}/verify-emt-token`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${emtToken}`,

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
+
 export default function HospitalLoginPage() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -13,8 +15,13 @@ export default function HospitalLoginPage() {
     useEffect(() =>{
         const checkToken = async () => {
             const token = localStorage.getItem('hospital_token');
+            
+            // Debug: Log the API URL being used
+            console.log('🔍 API_BASE:', API_BASE);
+            console.log('🔍 Full URL:', `${API_BASE}/verify-hospital-token`);
+            
             try{
-                const response = await fetch('http://localhost:8000/verify-hospital-token', {
+                const response = await fetch(`${API_BASE}/verify-hospital-token`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -42,7 +49,7 @@ export default function HospitalLoginPage() {
         setError('');
 
         try {
-            const response = await fetch('http://localhost:8000/hospital/login', {
+            const response = await fetch(`${API_BASE}/hospital/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username.toLowerCase(), password })

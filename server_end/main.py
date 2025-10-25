@@ -1,5 +1,5 @@
 import os
-from fastapi import Depends, FastAPI, HTTPException, Body, Header
+from fastapi import Depends, FastAPI, HTTPException, Body, Header, Query
 from pydantic import BaseModel
 from db import patients_collection,emt_collection,hospitals_collection
 from utils.encryption import encrypt, decrypt
@@ -8,6 +8,13 @@ import datetime
 from datetime import timedelta
 from typing import Optional
 from jose import ExpiredSignatureError, jwt, JWTError
+from starlette.requests import Request
+from starlette.responses import RedirectResponse
+import secrets
+
+# Import FHIR modules
+from fhir_service import FHIRService
+from fhir_oauth import FHIROAuthHandler
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -17,6 +24,10 @@ app = FastAPI()
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
+
+# Initialize FHIR services
+fhir_service = FHIRService()
+fhir_oauth = FHIROAuthHandler()
 
 app.add_middleware(
     CORSMiddleware,
@@ -128,37 +139,24 @@ class RegisterPatient(BaseModel):
 
 # Patient registration model
 class RegisterPatient(BaseModel):
-    mediconnect_username: str | None = None
-    password: str | None = None
+    mediconnect_username: str
+    password: str
     first_name: str
     middle_name: str | None = None
     last_name: str
-    driver_license_id: str | None = None
-    portal_username: str
-    portal_password: str
-    provider_portal_name: str
+    driver_license_id: str
     use_fingerprint: bool = False
     fingerprint_data: str | None = None
 
 @app.post("/register")
 async def register_patient(data: RegisterPatient):
-    # Check if MediConnect username already exists (if provided)
-    if data.mediconnect_username:
-        existing_patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
-        if existing_patient:
-            raise HTTPException(status_code=409, detail=f"Username '{data.mediconnect_username}' is already taken")
-
-    # Credential validation
-    if not (
-        (data.driver_license_id or data.mediconnect_username)
-        and (data.password or data.driver_license_id)
-    ):
-        raise HTTPException(status_code=400, detail="Insufficient credentials provided")
+    # Check if MediConnect username already exists
+    existing_patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
+    if existing_patient:
+        raise HTTPException(status_code=409, detail=f"Username '{data.mediconnect_username}' is already taken")
 
     # Hash password
-    hashed_pw = None
-    if data.password:
-        hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+    hashed_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
 
     # Hash fingerprint data if provided
     fingerprint_hash = None
@@ -170,23 +168,30 @@ async def register_patient(data: RegisterPatient):
         "first_name": encrypt(data.first_name),
         "middle_name": encrypt(data.middle_name or ""),
         "last_name": encrypt(data.last_name),
-        "driver_license_id": encrypt(data.driver_license_id) if data.driver_license_id else None,
-        "portal_username": encrypt(data.portal_username),
-        "portal_password": encrypt(data.portal_password),
+        "driver_license_id": encrypt(data.driver_license_id),
     }
+
+    # Generate session ID for FHIR OAuth flow
+    session_id = f"reg_{data.mediconnect_username}_{secrets.token_urlsafe(16)}"
 
     doc = {
         "mediconnect_username": data.mediconnect_username,
         "hashed_password": hashed_pw,
-        "provider_portal_name": data.provider_portal_name,
         "use_fingerprint": data.use_fingerprint,
         "fingerprint_data": fingerprint_hash,
         "created_at": datetime.datetime.now(datetime.timezone.utc),
-        **{k: v for k, v in encrypted_fields.items() if v is not None},
+        "registration_status": "pending_fhir",  # Status: pending_fhir, completed, or skipped_fhir
+        "fhir_session_id": session_id,
+        "fhir_connected": False,
+        **encrypted_fields,
     }
 
     await patients_collection.insert_one(doc)
-    return {"status": "success", "message": "Patient registered successfully"}
+    return {
+        "status": "success", 
+        "message": "Patient account created. Please connect healthcare provider.",
+        "session_id": session_id
+    }
 
 
 
@@ -292,16 +297,43 @@ async def deletePatient(data: DeletePatientRequest):
     raise HTTPException(status_code=404, detail="Credentials Incorrect")
 
 def _build_patient_response(patient):
-    return {
-        "API": "true",  # Replace dynamically once hospital API detection is implemented
-        "portal_name": patient["provider_portal_name"],
-        "auth_username": decrypt(patient['portal_username']['ciphertext'], patient['portal_username']['nonce']),
-        "auth_password": decrypt(patient['portal_password']['ciphertext'], patient['portal_password']['nonce']),
+    """Build patient response with FHIR data if available"""
+    response = {
         "first_name": decrypt(patient['first_name']['ciphertext'], patient['first_name']['nonce']),
         "middle_name": decrypt(patient['middle_name']['ciphertext'], patient['middle_name']['nonce']),
-        "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce'])
-    #replace with actual patient data once api integration is complete
+        "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce']),
+        "fhir_connected": patient.get("fhir_connected", False)
     }
+    
+    # Add FHIR data if connected
+    if patient.get("fhir_connected") and patient.get("fhir_data"):
+        response["API"] = "true"
+        response["portal_name"] = patient.get("provider_name", "Unknown Provider")
+        response["fhir_patient_id"] = patient.get("fhir_patient_id")
+        response["fhir_last_updated"] = patient.get("fhir_last_updated").isoformat() if patient.get("fhir_last_updated") else None
+        
+        # Include summary of available FHIR data
+        fhir_data = patient.get("fhir_data", {})
+        response["medical_data_summary"] = {
+            "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])),
+            "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])),
+            "medications_count": len(fhir_data.get("medications", {}).get("entry", [])),
+            "observations_count": len(fhir_data.get("observations", {}).get("entry", [])),
+            "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])),
+            "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", []))
+        }
+    else:
+        # Legacy fields for non-FHIR patients (if they exist)
+        if patient.get("portal_username") and patient.get("portal_password"):
+            response["API"] = "false"  # Legacy portal credentials
+            response["portal_name"] = patient.get("provider_portal_name", "Unknown")
+            response["auth_username"] = decrypt(patient['portal_username']['ciphertext'], patient['portal_username']['nonce'])
+            response["auth_password"] = decrypt(patient['portal_password']['ciphertext'], patient['portal_password']['nonce'])
+        else:
+            response["API"] = "false"
+            response["portal_name"] = "Not Connected"
+    
+    return response
 
 
 
@@ -410,3 +442,362 @@ def verify_hospital_token_endpoint(current_hospital: dict = Depends(get_current_
 def verify_patient_token_endpoint(current_patient: dict = Depends(get_current_patient)):
     return {"status": "ok", "user": current_patient}
 
+
+# ==================== FHIR ENDPOINTS ====================
+
+class FHIRLoginRequest(BaseModel):
+    """Request model for initiating FHIR OAuth login"""
+    patient_username: str  # MediConnect username to link FHIR data to
+
+@app.post("/fhir-login")
+async def initiate_fhir_login(request: Request, data: FHIRLoginRequest):
+    """
+    Initiate FHIR OAuth login flow for a patient
+    
+    This endpoint starts the OAuth2 authorization code flow with Epic FHIR.
+    The patient will be redirected to Epic's patient portal (MyChart) to authenticate.
+    
+    Flow:
+    1. Patient calls this endpoint with their MediConnect username
+    2. System generates a session ID and initiates OAuth flow
+    3. Patient is redirected to Epic login
+    4. After Epic login, patient is redirected back to /fhir-callback
+    5. System exchanges authorization code for access token
+    6. FHIR data can then be fetched using the session ID
+    """
+    # Generate unique session ID for this OAuth flow
+    session_id = f"fhir_{data.patient_username}_{secrets.token_urlsafe(16)}"
+    
+    # Initiate OAuth flow
+    redirect_response = fhir_oauth.initiate_patient_login(request, session_id)
+    
+    return {
+        "status": "redirect_required",
+        "session_id": session_id,
+        "redirect_url": redirect_response.headers["location"],
+        "message": "Redirect patient to this URL to complete Epic authentication"
+    }
+
+@app.get("/fhir-callback")
+async def fhir_callback(
+    code: str = Query(..., description="Authorization code from Epic"),
+    state: str = Query(..., description="State parameter for CSRF validation"),
+    session_id: str = Query(..., description="Session ID from login initiation")
+):
+    """
+    OAuth callback endpoint - Epic redirects here after patient authentication
+    
+    This endpoint:
+    1. Validates the state parameter (CSRF protection)
+    2. Exchanges authorization code for access token
+    3. Stores the access token and patient ID
+    4. Returns success response
+    """
+    try:
+        # Exchange code for token
+        token_data = await fhir_oauth.handle_callback(code, state, session_id)
+        
+        return {
+            "status": "success",
+            "message": "FHIR authentication successful",
+            "session_id": session_id,
+            "patient_id": token_data.get("patient_id"),
+            "scope": token_data.get("scope"),
+            "expires_in": token_data.get("expires_in")
+        }
+    except HTTPException as exc:
+        raise exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Callback processing failed: {str(e)}")
+
+class FHIRDataRequest(BaseModel):
+    """Request model for fetching FHIR patient data"""
+    session_id: str
+    patient_id: Optional[str] = None  # If not provided, uses patient_id from token
+
+@app.post("/fhir-request")
+async def fetch_fhir_data(data: FHIRDataRequest):
+    """
+    Fetch comprehensive patient FHIR data using stored access token
+    
+    This is the main endpoint for retrieving patient medical records from Epic FHIR.
+    
+    Args:
+        session_id: Session ID from the OAuth login flow
+        patient_id: Optional override for patient ID (uses token's patient_id if not provided)
+    
+    Returns:
+        Comprehensive patient data including:
+        - Demographics (name, DOB, gender, contact info)
+        - Allergies and intolerances
+        - Medical conditions
+        - Medications
+        - Observations (vital signs, lab results, social history)
+        - Procedures
+        - Immunizations
+    
+    Note: Some resources may return 403 if Epic's patient portal restricts access.
+    The endpoint gracefully handles these errors and returns available data.
+    """
+    # Retrieve stored token
+    token_data = fhir_oauth.get_token(data.session_id)
+    
+    if not token_data:
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired or invalid. Please re-authenticate via /fhir-login"
+        )
+    
+    access_token = token_data.get("access_token")
+    patient_id = data.patient_id or token_data.get("patient_id")
+    
+    if not patient_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No patient ID available. Ensure OAuth flow completed successfully."
+        )
+    
+    try:
+        # Fetch comprehensive patient data
+        patient_data = await fhir_service.fetch_comprehensive_patient_data(
+            patient_id=patient_id,
+            access_token=access_token
+        )
+        
+        return {
+            "status": "success",
+            "session_id": data.session_id,
+            "data": patient_data
+        }
+        
+    except HTTPException as exc:
+        raise exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch FHIR data: {str(e)}"
+        )
+
+@app.post("/fhir-logout")
+async def fhir_logout(session_id: str = Body(..., embed=True)):
+    """
+    Clear FHIR session and token data
+    
+    Args:
+        session_id: Session ID to clear
+    
+    Returns:
+        Success confirmation
+    """
+    fhir_oauth.clear_token(session_id)
+    
+    return {
+        "status": "success",
+        "message": "FHIR session cleared"
+    }
+
+class PatientLinkFHIRRequest(BaseModel):
+    """Request model for linking FHIR data to patient record"""
+    mediconnect_username: str
+    fhir_session_id: str
+
+@app.post("/patient/link-fhir")
+async def link_fhir_to_patient(data: PatientLinkFHIRRequest):
+    """
+    Link FHIR data to patient record after successful OAuth
+    
+    This endpoint:
+    1. Fetches comprehensive FHIR data using the session ID
+    2. Stores the FHIR data in the patient's MongoDB record
+    3. Updates the registration status to completed
+    
+    Args:
+        mediconnect_username: The patient's MediConnect username
+        fhir_session_id: Session ID from the FHIR OAuth flow
+    
+    Returns:
+        Success confirmation with patient data summary
+    """
+    # Find the patient record
+    patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Retrieve FHIR token
+    token_data = fhir_oauth.get_token(data.fhir_session_id)
+    if not token_data:
+        raise HTTPException(
+            status_code=401,
+            detail="FHIR session expired or invalid. Please re-authenticate."
+        )
+    
+    access_token = token_data.get("access_token")
+    patient_id = token_data.get("patient_id")
+    
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="No patient ID available from FHIR session")
+    
+    try:
+        # Fetch comprehensive patient data from FHIR
+        fhir_data = await fhir_service.fetch_comprehensive_patient_data(
+            patient_id=patient_id,
+            access_token=access_token
+        )
+        
+        # Extract provider name from FHIR patient data if available
+        provider_name = "Unknown Provider"
+        if fhir_data.get("patient") and fhir_data["patient"].get("managingOrganization"):
+            provider_name = fhir_data["patient"]["managingOrganization"].get("display", "Unknown Provider")
+        
+        # Update patient record with FHIR data
+        update_result = await patients_collection.update_one(
+            {"mediconnect_username": data.mediconnect_username},
+            {
+                "$set": {
+                    "fhir_patient_id": patient_id,
+                    "fhir_data": fhir_data,
+                    "fhir_last_updated": datetime.datetime.now(datetime.timezone.utc),
+                    "fhir_connected": True,
+                    "registration_status": "completed",
+                    "provider_name": provider_name,
+                    "fhir_scope": token_data.get("scope", "")
+                }
+            }
+        )
+        
+        if update_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update patient record")
+        
+        # Clear the FHIR session token (optional - keep if you want to reuse it)
+        # fhir_oauth.clear_token(data.fhir_session_id)
+        
+        return {
+            "status": "success",
+            "message": "FHIR data successfully linked to patient account",
+            "provider_name": provider_name,
+            "patient_id": patient_id,
+            "data_summary": {
+                "demographics": bool(fhir_data.get("patient")),
+                "allergies": len(fhir_data.get("allergies", {}).get("entry", [])),
+                "conditions": len(fhir_data.get("conditions", {}).get("entry", [])),
+                "medications": len(fhir_data.get("medications", {}).get("entry", [])),
+                "observations": len(fhir_data.get("observations", {}).get("entry", [])),
+                "procedures": len(fhir_data.get("procedures", {}).get("entry", [])),
+                "immunizations": len(fhir_data.get("immunizations", {}).get("entry", []))
+            }
+        }
+        
+    except HTTPException as exc:
+        raise exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch or store FHIR data: {str(e)}"
+        )
+
+class PatientSkipFHIRRequest(BaseModel):
+    """Request model for skipping FHIR connection"""
+    mediconnect_username: str
+
+@app.post("/patient/skip-fhir")
+async def skip_fhir_connection(data: PatientSkipFHIRRequest):
+    """
+    Skip FHIR connection and complete registration
+    
+    Allows patients to complete registration without connecting their healthcare provider.
+    They can connect later from their profile.
+    
+    Args:
+        mediconnect_username: The patient's MediConnect username
+    
+    Returns:
+        Success confirmation
+    """
+    # Find the patient record
+    patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Update registration status
+    update_result = await patients_collection.update_one(
+        {"mediconnect_username": data.mediconnect_username},
+        {
+            "$set": {
+                "registration_status": "skipped_fhir",
+                "fhir_connected": False
+            }
+        }
+    )
+    
+    if update_result.modified_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to update patient record")
+    
+    return {
+        "status": "success",
+        "message": "Registration completed without FHIR connection. You can connect your healthcare provider later."
+    }
+
+class FHIRResourceRequest(BaseModel):
+    """Request model for fetching specific FHIR resources"""
+    session_id: str
+    patient_id: Optional[str] = None
+    resource_type: str  # "allergies", "conditions", "medications", "observations", "procedures", "immunizations"
+    category: Optional[str] = None  # For observations: "vital-signs", "laboratory", "social-history"
+
+@app.post("/fhir-resource")
+async def fetch_fhir_resource(data: FHIRResourceRequest):
+    """
+    Fetch a specific FHIR resource type
+    
+    Useful for fetching individual resource types instead of all comprehensive data.
+    
+    Resource types:
+    - "patient": Demographics
+    - "allergies": Allergies and intolerances
+    - "conditions": Medical conditions
+    - "medications": Medication requests
+    - "observations": Observations (requires category)
+    - "procedures": Procedure history
+    - "immunizations": Immunization records
+    """
+    # Retrieve stored token
+    token_data = fhir_oauth.get_token(data.session_id)
+    
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Session expired. Please re-authenticate.")
+    
+    access_token = token_data.get("access_token")
+    patient_id = data.patient_id or token_data.get("patient_id")
+    
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="No patient ID available")
+    
+    try:
+        # Route to appropriate FHIR service method
+        if data.resource_type == "patient":
+            result = await fhir_service.fetch_patient(patient_id, access_token)
+        elif data.resource_type == "allergies":
+            result = await fhir_service.fetch_allergies(patient_id, access_token)
+        elif data.resource_type == "conditions":
+            result = await fhir_service.fetch_conditions(patient_id, access_token)
+        elif data.resource_type == "medications":
+            result = await fhir_service.fetch_medications(patient_id, access_token)
+        elif data.resource_type == "observations":
+            result = await fhir_service.fetch_observations(patient_id, access_token, data.category)
+        elif data.resource_type == "procedures":
+            result = await fhir_service.fetch_procedures(patient_id, access_token)
+        elif data.resource_type == "immunizations":
+            result = await fhir_service.fetch_immunizations(patient_id, access_token)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown resource type: {data.resource_type}")
+        
+        return {
+            "status": "success",
+            "resource_type": data.resource_type,
+            "data": result
+        }
+        
+    except HTTPException as exc:
+        raise exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch {data.resource_type}: {str(e)}")

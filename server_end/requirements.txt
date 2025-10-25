@@ -6,3 +6,6 @@ bcrypt
 cryptography
 motor
 python-jose
+httpx
+python-dotenv
+starlette
