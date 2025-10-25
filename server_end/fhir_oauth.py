@@ -26,7 +26,7 @@ class FHIROAuthHandler:
     def __init__(self):
         self.client_id = os.getenv("CLIENT_ID")
         self.client_secret = os.getenv("CLIENT_SECRET", "")
-        self.redirect_uri = os.getenv("REDIRECT_URI", "https://localhost:8000/fhir-callback")
+        self.redirect_uri = os.getenv("REDIRECT_URI", "https://localhost:8000/callback")
         self.fhir_server_url = os.getenv("FHIR_SERVER_URL")
         self.scopes = os.getenv("FHIR_SCOPES", "patient/Patient.r patient/AllergyIntolerance.r launch/patient openid fhirUser")
         
@@ -66,14 +66,19 @@ class FHIROAuthHandler:
         # Generate state for CSRF protection
         state = secrets.token_urlsafe(32)
         
-        # Store session data
-        token_store[session_id] = {
+        # Store session data using STATE as the key (since Epic only returns state in callback)
+        # Also store a mapping from session_id to state for frontend reference
+        token_store[state] = {
             "code_verifier": code_verifier,
             "state": state,
+            "session_id": session_id,
             "timestamp": int(time.time())
         }
         
-        logger.info(f"Stored OAuth session for session_id: {session_id}")
+        # Store mapping for frontend to retrieve state later if needed
+        token_store[f"session_{session_id}"] = {"state": state}
+        
+        logger.info(f"Stored OAuth session | session_id={session_id} | state={state[:10]}...")
         
         # Build authorization URL
         auth_params = {
@@ -106,32 +111,31 @@ class FHIROAuthHandler:
     async def handle_callback(
         self, 
         code: str, 
-        state: str, 
-        session_id: str
+        state: str
     ) -> Dict[str, Any]:
         """
         Handle OAuth callback and exchange authorization code for access token
         
         Args:
             code: Authorization code from Epic
-            state: State parameter for CSRF validation
-            session_id: Session identifier
+            state: State parameter for CSRF validation (also serves as session lookup key)
             
         Returns:
             Dict containing access_token, patient_id, and other OAuth response data
         """
-        # Retrieve session data
-        session_data = token_store.get(session_id)
+        # Retrieve session data using STATE as the key
+        session_data = token_store.get(state)
         if not session_data:
-            logger.error(f"❌ Session not found: {session_id}")
+            logger.error(f"❌ Session not found for state: {state[:10]}...")
             raise HTTPException(status_code=400, detail="Invalid session. Please restart login.")
         
-        # Validate state (CSRF protection)
+        # Validate state (CSRF protection) - should always match since we're using it as the key
         if session_data["state"] != state:
             logger.error(f"❌ State mismatch | expected={session_data['state']} | received={state}")
             raise HTTPException(status_code=400, detail="Invalid state parameter. Possible CSRF attack.")
         
         code_verifier = session_data["code_verifier"]
+        session_id = session_data.get("session_id", state)  # Fallback to state if no session_id
         
         # Exchange authorization code for access token
         token_params = {
@@ -174,21 +178,27 @@ class FHIROAuthHandler:
         if not patient_id:
             logger.warning("⚠️ No patient ID in token response")
         
-        # Store token data
-        token_store[session_id] = {
+        # Store token data using STATE as the key (for consistency)
+        # Also store using session_id for frontend lookups
+        token_data_obj = {
             "access_token": access_token,
             "patient_id": patient_id,
             "scope": scope,
             "expires_in": expires_in,
             "token_type": token_data.get("token_type", "Bearer"),
             "fhir_user": token_data.get("fhirUser", ""),
-            "id_token": token_data.get("id_token", "")
+            "id_token": token_data.get("id_token", ""),
+            "session_id": session_id,
+            "state": state
         }
+        
+        token_store[state] = token_data_obj
+        token_store[session_id] = token_data_obj  # Also store by session_id for frontend
         
         logger.info(f"✅ Token exchange successful | patient_id={patient_id} | session={session_id}")
         logger.info(f"📋 Granted scopes: {scope}")
         
-        return token_store[session_id]
+        return token_data_obj
     
     def get_token(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve stored token data for a session"""

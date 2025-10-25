@@ -11,6 +11,7 @@ from jose import ExpiredSignatureError, jwt, JWTError
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 import secrets
+import logging
 
 # Import FHIR modules
 from fhir_service import FHIRService
@@ -21,6 +22,9 @@ load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
@@ -478,11 +482,10 @@ async def initiate_fhir_login(request: Request, data: FHIRLoginRequest):
         "message": "Redirect patient to this URL to complete Epic authentication"
     }
 
-@app.get("/fhir-callback")
+@app.get("/callback")
 async def fhir_callback(
     code: str = Query(..., description="Authorization code from Epic"),
-    state: str = Query(..., description="State parameter for CSRF validation"),
-    session_id: str = Query(..., description="Session ID from login initiation")
+    state: str = Query(..., description="State parameter for CSRF validation")
 ):
     """
     OAuth callback endpoint - Epic redirects here after patient authentication
@@ -491,20 +494,24 @@ async def fhir_callback(
     1. Validates the state parameter (CSRF protection)
     2. Exchanges authorization code for access token
     3. Stores the access token and patient ID
-    4. Returns success response
+    4. Redirects to frontend callback page to complete the flow
+    
+    Note: The state parameter IS the session_id - we use it to retrieve the stored session data
     """
     try:
-        # Exchange code for token
-        token_data = await fhir_oauth.handle_callback(code, state, session_id)
+        # Exchange code for token (only pass code and state)
+        token_data = await fhir_oauth.handle_callback(code, state)
         
-        return {
-            "status": "success",
-            "message": "FHIR authentication successful",
-            "session_id": session_id,
-            "patient_id": token_data.get("patient_id"),
-            "scope": token_data.get("scope"),
-            "expires_in": token_data.get("expires_in")
-        }
+        session_id = token_data.get("session_id", state)
+        patient_id = token_data.get("patient_id")
+        
+        logger.info(f"✅ OAuth callback successful | Redirecting to frontend | session={session_id} | patient={patient_id}")
+        
+        # Redirect to frontend callback page with session_id
+        # Frontend will handle the UI and call /patient/link-fhir
+        frontend_callback_url = f"http://localhost:3000/callback?session_id={session_id}&patient_id={patient_id}&status=success"
+        
+        return RedirectResponse(url=frontend_callback_url, status_code=302)
     except HTTPException as exc:
         raise exc
     except Exception as e:
@@ -801,3 +808,149 @@ async def fetch_fhir_resource(data: FHIRResourceRequest):
         raise exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch {data.resource_type}: {str(e)}")
+
+
+# ==================== PATIENT PROFILE ENDPOINTS ====================
+
+class UpdateProfileRequest(BaseModel):
+    """Request model for updating patient profile"""
+    mediconnect_username: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    blood_type: Optional[str] = None
+    insurance_provider: Optional[str] = None
+    insurance_policy_number: Optional[str] = None
+
+@app.post("/patient/update-profile")
+async def update_patient_profile(data: UpdateProfileRequest):
+    """
+    Update patient profile with additional information
+    
+    This endpoint allows patients to add or update contact info,
+    emergency contacts, address, and insurance information.
+    """
+    # Find the patient record
+    patient = await patients_collection.find_one({"mediconnect_username": data.mediconnect_username})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Prepare update data - encrypt sensitive fields
+    update_data = {}
+    
+    # Encrypt contact information if provided
+    if data.email:
+        update_data["email"] = encrypt(data.email)
+    if data.phone:
+        update_data["phone"] = encrypt(data.phone)
+    if data.emergency_contact_name:
+        update_data["emergency_contact_name"] = encrypt(data.emergency_contact_name)
+    if data.emergency_contact_phone:
+        update_data["emergency_contact_phone"] = encrypt(data.emergency_contact_phone)
+    
+    # Encrypt address information if provided
+    if data.address_line1:
+        update_data["address_line1"] = encrypt(data.address_line1)
+    if data.address_line2:
+        update_data["address_line2"] = encrypt(data.address_line2)
+    if data.city:
+        update_data["city"] = encrypt(data.city)
+    if data.state:
+        update_data["state"] = encrypt(data.state)
+    if data.zip_code:
+        update_data["zip_code"] = encrypt(data.zip_code)
+    
+    # Encrypt medical information if provided
+    if data.date_of_birth:
+        update_data["date_of_birth"] = encrypt(data.date_of_birth)
+    if data.blood_type:
+        update_data["blood_type"] = encrypt(data.blood_type)
+    
+    # Encrypt insurance information if provided
+    if data.insurance_provider:
+        update_data["insurance_provider"] = encrypt(data.insurance_provider)
+    if data.insurance_policy_number:
+        update_data["insurance_policy_number"] = encrypt(data.insurance_policy_number)
+    
+    # Mark profile as complete
+    update_data["profile_completed"] = True
+    update_data["profile_updated_at"] = datetime.datetime.now(datetime.timezone.utc)
+    
+    # Update patient record
+    update_result = await patients_collection.update_one(
+        {"mediconnect_username": data.mediconnect_username},
+        {"$set": update_data}
+    )
+    
+    if update_result.modified_count == 0 and not update_data:
+        return {"status": "success", "message": "No changes to update"}
+    
+    return {
+        "status": "success",
+        "message": "Profile updated successfully"
+    }
+
+@app.get("/patient/profile/{username}")
+async def get_patient_profile(username: str):
+    """
+    Get patient profile data (decrypted)
+    
+    Returns all patient information including FHIR data if connected
+    """
+    # Find the patient record
+    patient = await patients_collection.find_one({"mediconnect_username": username})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Build response with decrypted data
+    response = {
+        "mediconnect_username": username,
+        "first_name": decrypt(patient['first_name']['ciphertext'], patient['first_name']['nonce']),
+        "middle_name": decrypt(patient['middle_name']['ciphertext'], patient['middle_name']['nonce']),
+        "last_name": decrypt(patient['last_name']['ciphertext'], patient['last_name']['nonce']),
+        "driver_license_id": decrypt(patient['driver_license_id']['ciphertext'], patient['driver_license_id']['nonce']),
+        "fhir_connected": patient.get("fhir_connected", False),
+        "profile_completed": patient.get("profile_completed", False)
+    }
+    
+    # Add optional encrypted fields if they exist
+    optional_fields = [
+        'email', 'phone', 'emergency_contact_name', 'emergency_contact_phone',
+        'address_line1', 'address_line2', 'city', 'state', 'zip_code',
+        'date_of_birth', 'blood_type', 'insurance_provider', 'insurance_policy_number'
+    ]
+    
+    for field in optional_fields:
+        if field in patient and patient[field]:
+            try:
+                response[field] = decrypt(patient[field]['ciphertext'], patient[field]['nonce'])
+            except:
+                response[field] = None
+    
+    # Add FHIR information if connected
+    if patient.get("fhir_connected"):
+        response["provider_name"] = patient.get("provider_name", "Unknown Provider")
+        response["fhir_patient_id"] = patient.get("fhir_patient_id")
+        response["fhir_last_updated"] = patient.get("fhir_last_updated").isoformat() if patient.get("fhir_last_updated") else None
+        
+        # Include FHIR data summary
+        if patient.get("fhir_data"):
+            fhir_data = patient.get("fhir_data", {})
+            response["fhir_data"] = fhir_data
+            response["medical_data_summary"] = {
+                "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])),
+                "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])),
+                "medications_count": len(fhir_data.get("medications", {}).get("entry", [])),
+                "observations_count": len(fhir_data.get("observations", {}).get("entry", [])),
+                "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])),
+                "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", []))
+            }
+    
+    return response

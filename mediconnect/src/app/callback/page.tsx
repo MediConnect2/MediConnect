@@ -14,45 +14,42 @@ export default function FHIRCallbackPage() {
 
     useEffect(() => {
         const handleCallback = async () => {
-            // Get OAuth callback parameters from URL
-            const code = searchParams.get('code');
-            const state = searchParams.get('state');
+            // Get callback parameters from URL
+            // Backend redirects here after handling Epic's OAuth callback
+            const sessionIdParam = searchParams.get('session_id');
+            const patientIdParam = searchParams.get('patient_id');
+            const statusParam = searchParams.get('status');
             
             // Get stored session info from localStorage
             const fhirSessionId = localStorage.getItem('fhir_session_id');
             const mediconnectUsername = localStorage.getItem('mediconnect_username');
 
-            if (!code || !state || !fhirSessionId || !mediconnectUsername) {
+            // Check if we have all required data
+            if (!sessionIdParam && !fhirSessionId) {
                 setStatus('error');
-                setError('Missing required parameters. Please try registering again.');
+                setError('Missing session ID. Please try registering again.');
+                return;
+            }
+
+            if (!mediconnectUsername) {
+                setStatus('error');
+                setError('Missing username. Please try registering again.');
                 return;
             }
 
             try {
-                setMessage('Exchanging authorization code...');
-                
-                // Step 1: Handle OAuth callback (exchange code for token)
-                const callbackRes = await fetch(`${API_BASE}/fhir-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}&session_id=${encodeURIComponent(fhirSessionId)}`, {
-                    method: 'GET'
-                });
-
-                if (!callbackRes.ok) {
-                    const errorData = await callbackRes.json();
-                    throw new Error(errorData.detail || 'Failed to complete OAuth callback');
-                }
-
-                const callbackData = await callbackRes.json();
-                console.log('OAuth callback successful:', callbackData);
+                // Use session_id from URL (provided by backend after OAuth exchange)
+                const actualSessionId = sessionIdParam || fhirSessionId;
 
                 setMessage('Fetching your medical records...');
 
-                // Step 2: Link FHIR data to patient record
+                // Link FHIR data to patient record
                 const linkRes = await fetch(`${API_BASE}/patient/link-fhir`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         mediconnect_username: mediconnectUsername,
-                        fhir_session_id: fhirSessionId
+                        fhir_session_id: actualSessionId
                     })
                 });
 
@@ -64,17 +61,17 @@ export default function FHIRCallbackPage() {
                 const linkData = await linkRes.json();
                 console.log('FHIR data linked:', linkData);
 
-                // Clear stored session data
+                // Clear FHIR session data
                 localStorage.removeItem('fhir_session_id');
-                localStorage.removeItem('mediconnect_username');
+                // Keep mediconnect_username for next page
 
                 setStatus('success');
                 setMessage(`Successfully connected to ${linkData.provider_name}! Imported ${linkData.data_summary.allergies} allergies, ${linkData.data_summary.conditions} conditions, ${linkData.data_summary.medications} medications, and more.`);
 
-                // Redirect to home or dashboard after 3 seconds
+                // Redirect to complete profile page after 2 seconds
                 setTimeout(() => {
-                    router.push('/');
-                }, 3000);
+                    router.push(`/complete-profile?username=${mediconnectUsername}`);
+                }, 2000);
 
             } catch (err: any) {
                 console.error('FHIR callback error:', err);
