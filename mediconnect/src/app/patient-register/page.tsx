@@ -221,7 +221,7 @@ export default function PatientRegisterPage(){
                         fontWeight: '600',
                         fontSize: '0.9rem'
                     }}>
-                        {step === 1 ? '1. Basic Information' : '✓ Basic Information'}
+                        {step === 1 ? '1. Basic Information' : 'Basic Information'}
                     </div>
                     <div style={{
                         width: '50px',
@@ -696,7 +696,6 @@ export default function PatientRegisterPage(){
                                 fontSize: '4rem', 
                                 marginBottom: '1.5rem'
                             }}>
-                                🏥
                             </div>
                             
                             <h3 style={{ 
@@ -744,10 +743,10 @@ export default function PatientRegisterPage(){
                                     lineHeight: '2',
                                     fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
                                 }}>
-                                    <li>✓ You'll be redirected to your healthcare provider's login page</li>
-                                    <li>✓ Sign in with your existing patient portal credentials</li>
-                                    <li>✓ Authorize MediConnect to access your medical records</li>
-                                    <li>✓ Your data will be securely imported and encrypted</li>
+                                    <li>You'll be redirected to your healthcare provider's login page</li>
+                                    <li>Sign in with your existing patient portal credentials</li>
+                                    <li>Authorize MediConnect to access your medical records</li>
+                                    <li>Your data will be securely imported and encrypted</li>
                                 </ul>
                             </div>
 

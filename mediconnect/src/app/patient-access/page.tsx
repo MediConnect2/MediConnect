@@ -93,14 +93,16 @@ export default function PatientAccessPage() {
         }
 
         const loginData = await loginResponse.json();
-        setPatientInfo(loginData.patient_info);
-        setIsAuthenticated(true);
         
-        // Store token for future requests
+        // Store token and username for future requests
         localStorage.setItem('patient_token', loginData.access_token);
+        localStorage.setItem('mediconnect_username', authForm.mediconnect_username);
         
         // Notify Navbar of login status change
         window.dispatchEvent(new Event('loginStatusChanged'));
+        
+        // Redirect to patient dashboard
+        router.push(`/patient-dashboard?username=${authForm.mediconnect_username}`);
       }
     } catch (err: any) {
       setError(err.message);

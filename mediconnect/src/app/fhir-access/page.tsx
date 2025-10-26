@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
@@ -325,7 +326,8 @@ export default function FHIRAccessPage() {
     return (
       <div style={styles.container}>
         <div style={styles.loadingCard}>
-          <h2>Loading...</h2>
+          <LoadingSpinner size={48} color="#3b82f6" />
+          <h2 style={{ marginTop: '1rem', color: '#4b5563' }}>Loading Patient Data...</h2>
         </div>
       </div>
     );
@@ -335,35 +337,35 @@ export default function FHIRAccessPage() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <h1 style={styles.title}>🏥 MediConnect FHIR Access</h1>
+          <h1 style={styles.title}>MediConnect FHIR Access</h1>
           <p style={styles.subtitle}>Access patient medical records securely via FHIR</p>
           
           {error && (
             <div style={styles.errorBox}>
-              <strong>⚠️ {error}</strong>
+              <strong>Error: {error}</strong>
             </div>
           )}
 
           <div style={styles.infoBox}>
-            <h3>🔐 Secure Authentication Required</h3>
+            <h3>Secure Authentication Required</h3>
             <p>
               You need to authenticate with the EHR system to access patient data.
               This uses SMART on FHIR OAuth2 protocol.
             </p>
             <ul style={styles.featureList}>
-              <li>✅ Secure OAuth2 authentication</li>
-              <li>✅ HIPAA-compliant data access</li>
-              <li>✅ Real-time patient information</li>
-              <li>✅ Comprehensive medical history</li>
+              <li>Secure OAuth2 authentication</li>
+              <li>HIPAA-compliant data access</li>
+              <li>Real-time patient information</li>
+              <li>Comprehensive medical history</li>
             </ul>
           </div>
 
           <div style={styles.buttonGroup}>
             <button onClick={handleLogin} style={styles.primaryButton}>
-              � Patient Portal Login
+              Patient Portal Login
             </button>
             <button onClick={handleProviderLogin} style={styles.secondaryButton}>
-              🏥 Provider/Practitioner Login
+              Provider/Practitioner Login
             </button>
           </div>
 
@@ -380,7 +382,7 @@ export default function FHIRAccessPage() {
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h1 style={styles.headerTitle}>🏥 MediConnect - Patient Record</h1>
+          <h1 style={styles.headerTitle}>MediConnect - Patient Record</h1>
           {authStatus && (
             <p style={styles.headerSubtitle}>
               Authenticated | Patient ID: {authStatus.patient_id}
@@ -414,7 +416,7 @@ export default function FHIRAccessPage() {
         )}
 
       <div style={styles.credentialsCard}>
-        <h2 style={styles.sectionTitle}>🔐 Authentication Details</h2>
+        <h2 style={styles.sectionTitle}>Authentication Details</h2>
         <div style={styles.credentialsGrid}>
           <div style={styles.credentialItem}>
             <span style={styles.credentialLabel}>FHIR User</span>
@@ -467,7 +469,7 @@ export default function FHIRAccessPage() {
 
       {error && (
         <div style={styles.errorBox}>
-          <strong>⚠️ {error}</strong>
+          <strong>Error: {error}</strong>
         </div>
       )}
 
@@ -480,7 +482,7 @@ export default function FHIRAccessPage() {
             style={styles.primaryButton}
             disabled={loading || isPractitionerLogin || missingPatientContext}
           >
-            {loading ? '⏳ Loading...' : '📋 Load Patient Data'}
+            {loading ? <LoadingSpinner size={20} color="#ffffff" /> : 'Load Patient Data'}
           </button>
           {(isPractitionerLogin || missingPatientContext) && (
             <p style={styles.helpText}>
@@ -505,7 +507,7 @@ export default function FHIRAccessPage() {
               style={styles.refreshButton}
               disabled={loading}
             >
-              {loading ? '⏳' : '🔄 Refresh'}
+              {loading ? <LoadingSpinner size={20} color="#ffffff" /> : 'Refresh'}
             </button>
           </div>
 
@@ -529,11 +531,11 @@ export default function FHIRAccessPage() {
           <div style={styles.tabContent}>
             {activeTab === 'overview' && (
               <div>
-                <h3 style={styles.sectionTitle}>📊 Patient Overview</h3>
+                <h3 style={styles.sectionTitle}>Patient Overview</h3>
                 
                 <div style={styles.quickInfo}>
                   <div style={styles.infoCard}>
-                    <div style={styles.infoIcon}>🚨</div>
+                    <div style={styles.infoIcon}>Allergies</div>
                     <div>
                       <div style={styles.infoLabel}>Allergies</div>
                       <div style={styles.infoValue}>
@@ -543,7 +545,7 @@ export default function FHIRAccessPage() {
                   </div>
                   
                   <div style={styles.infoCard}>
-                    <div style={styles.infoIcon}>💊</div>
+                    <div style={styles.infoIcon}>Medications</div>
                     <div>
                       <div style={styles.infoLabel}>Medications</div>
                       <div style={styles.infoValue}>
@@ -553,7 +555,7 @@ export default function FHIRAccessPage() {
                   </div>
                   
                   <div style={styles.infoCard}>
-                    <div style={styles.infoIcon}>🏥</div>
+                    <div style={styles.infoIcon}>Conditions</div>
                     <div>
                       <div style={styles.infoLabel}>Conditions</div>
                       <div style={styles.infoValue}>
@@ -564,7 +566,7 @@ export default function FHIRAccessPage() {
                 </div>
 
                 <div style={styles.criticalSection}>
-                  <h4 style={styles.criticalTitle}>⚠️ Critical Information</h4>
+                  <h4 style={styles.criticalTitle}>Critical Information</h4>
                   
                   {patientData.allergies.summary.length > 0 ? (
                     <div style={styles.allergyAlert}>
@@ -600,12 +602,12 @@ export default function FHIRAccessPage() {
 
             {activeTab === 'allergies' && (
               <div>
-                <h3 style={styles.sectionTitle}>🚨 Allergies & Intolerances</h3>
+                <h3 style={styles.sectionTitle}>Allergies & Intolerances</h3>
                 {patientData.allergies.summary.length > 0 ? (
                   <div style={styles.listContainer}>
                     {patientData.allergies.summary.map((allergy, idx) => (
                       <div key={idx} style={styles.listItem}>
-                        <div style={styles.listItemIcon}>⚠️</div>
+                        <div style={styles.listItemIcon}>-</div>
                         <div style={styles.listItemText}>{allergy}</div>
                       </div>
                     ))}
@@ -625,12 +627,12 @@ export default function FHIRAccessPage() {
 
             {activeTab === 'medications' && (
               <div>
-                <h3 style={styles.sectionTitle}>💊 Current Medications</h3>
+                <h3 style={styles.sectionTitle}>Current Medications</h3>
                 {patientData.medications.summary.length > 0 ? (
                   <div style={styles.listContainer}>
                     {patientData.medications.summary.map((med, idx) => (
                       <div key={idx} style={styles.listItem}>
-                        <div style={styles.listItemIcon}>💊</div>
+                        <div style={styles.listItemIcon}>-</div>
                         <div style={styles.listItemText}>{med}</div>
                       </div>
                     ))}
@@ -650,7 +652,7 @@ export default function FHIRAccessPage() {
 
             {activeTab === 'conditions' && (
               <div>
-                <h3 style={styles.sectionTitle}>🏥 Medical Conditions</h3>
+                <h3 style={styles.sectionTitle}>Medical Conditions</h3>
                 {patientData.conditions?.entry?.length > 0 ? (
                   <div style={styles.listContainer}>
                     {patientData.conditions.entry.map((entry: any, idx: number) => {
@@ -660,7 +662,7 @@ export default function FHIRAccessPage() {
                                     'Unknown Condition';
                       return (
                         <div key={idx} style={styles.listItem}>
-                          <div style={styles.listItemIcon}>🩺</div>
+                          <div style={styles.listItemIcon}>-</div>
                           <div>
                             <div style={styles.listItemText}>{display}</div>
                             {condition.clinicalStatus && (
@@ -688,7 +690,7 @@ export default function FHIRAccessPage() {
 
             {activeTab === 'vitals' && (
               <div>
-                <h3 style={styles.sectionTitle}>📈 Vital Signs</h3>
+                <h3 style={styles.sectionTitle}>Vital Signs</h3>
                 {patientData.vital_signs?.entry?.length > 0 ? (
                   <div style={styles.listContainer}>
                     {patientData.vital_signs.entry.slice(0, 10).map((entry: any, idx: number) => {
@@ -701,7 +703,7 @@ export default function FHIRAccessPage() {
                       
                       return (
                         <div key={idx} style={styles.listItem}>
-                          <div style={styles.listItemIcon}>📊</div>
+                          <div style={styles.listItemIcon}>-</div>
                           <div style={{flex: 1}}>
                             <div style={styles.listItemText}>{display}</div>
                             <div style={styles.vitalValue}>

@@ -362,7 +362,7 @@ async def check_hospital_credentials(data: HospitalUsernamePasswordCheck):
                     }
                     token = create_access_token(token_data)
                     return {
-                        "hospital_name":data.name,
+                        "name": hospital.get('name', hospital['username']),
                         "access_token": token
                     }
                 else:

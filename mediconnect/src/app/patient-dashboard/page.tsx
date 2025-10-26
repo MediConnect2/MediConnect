@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
 
@@ -92,14 +93,14 @@ export default function PatientDashboardPage() {
 
     if (loading) {
         return (
-            <div style={{ 
-                minHeight: '100vh', 
-                display: 'flex', 
-                alignItems: 'center', 
+            <div style={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'center',
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
             }}>
-                <div style={{ color: 'white', fontSize: '1.5rem' }}>Loading...</div>
+                <LoadingSpinner size={48} color="#ffffff" />
             </div>
         );
     }
@@ -129,8 +130,8 @@ export default function PatientDashboardPage() {
                             </h1>
                             <p style={{ fontSize: '1.1rem', opacity: 0.9 }}>
                                 {patient.fhir_connected 
-                                    ? `✅ Connected to ${patient.provider_name}` 
-                                    : '⚠️ No healthcare provider connected'}
+                                    ? `Connected to ${patient.provider_name}`
+                                    : 'No healthcare provider connected'}
                             </p>
                         </div>
                         <button
