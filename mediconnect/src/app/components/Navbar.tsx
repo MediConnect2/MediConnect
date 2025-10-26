@@ -8,18 +8,56 @@ export default function Navbar() {
     const router = useRouter();
     const pathname = usePathname();
     const [isHospitalLoggedIn, setIsHospitalLoggedIn] = useState(false);
+    const [isEmtLoggedIn, setIsEmtLoggedIn] = useState(false);
+    const [isPatientLoggedIn, setIsPatientLoggedIn] = useState(false);
 
     useEffect(() => {
-        // Check if hospital is logged in
-        const token = localStorage.getItem('hospital_token');
-        setIsHospitalLoggedIn(!!token);
-    }, [pathname]);
+        // Check login status for all accounts
+        const checkLoginStatus = () => {
+            const hospitalToken = localStorage.getItem('hospital_token');
+            const emtToken = localStorage.getItem('emt_token');
+            const patientToken = localStorage.getItem('patient_token');
+            setIsHospitalLoggedIn(!!hospitalToken);
+            setIsEmtLoggedIn(!!emtToken);
+            setIsPatientLoggedIn(!!patientToken);
+        };
+
+        checkLoginStatus();
+
+        // Listen for custom login status change event, storage changes (other tabs), and window focus
+        const handleLoginStatusChange = () => checkLoginStatus();
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'hospital_token' || e.key === 'emt_token' || e.key === 'patient_token') {
+                checkLoginStatus();
+            }
+        };
+        const handleWindowFocus = () => checkLoginStatus();
+
+        window.addEventListener('loginStatusChanged', handleLoginStatusChange);
+        window.addEventListener('storage', handleStorageChange);
+        window.addEventListener('focus', handleWindowFocus);
+
+        return () => {
+            window.removeEventListener('loginStatusChanged', handleLoginStatusChange);
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, []);
+
+    const isAnyLoggedIn = isHospitalLoggedIn || isEmtLoggedIn || isPatientLoggedIn;
 
     const handleHospitalLogout = () => {
         // Remove hospital token from localStorage
         localStorage.removeItem('hospital_token');
         setIsHospitalLoggedIn(false);
+        // Notify other parts of the app that login status changed
+        window.dispatchEvent(new Event('loginStatusChanged'));
         router.push('/hospital-login');
+    };
+
+    const handleLockedButtonClick = (account?: string) => {
+        const acct = account ?? 'that account';
+        alert(`Please log out first to login as "${acct}".`);
     };
 
     const navItems = [
@@ -79,47 +117,89 @@ export default function Navbar() {
                     alignItems: 'center'
                 }}>
                     {navItems.map((item) => (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            style={{
-                                color: pathname === item.href ? '#ffffff' : '#64748b',
-                                textDecoration: 'none',
-                                fontWeight: '500',
-                                fontSize: '0.95rem',
-                                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                                padding: '0.75rem 1.5rem',
-                                borderRadius: '50px',
-                                backgroundColor: pathname === item.href ? '#3b82f6' : 'transparent',
-                                border: '1px solid',
-                                borderColor: pathname === item.href ? '#3b82f6' : 'rgba(100, 116, 139, 0.2)',
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                boxShadow: pathname === item.href ? '0 4px 20px rgba(59, 130, 246, 0.3)' : 'none'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (pathname !== item.href) {
+                        isAnyLoggedIn ? (
+                            <button
+                                key={item.href}
+                                onClick={() => {
+                                    const acct = item.href === '/'
+                                        ? 'EMT'
+                                        : item.href === '/patient-access'
+                                            ? 'Patient'
+                                            : 'Hospital';
+                                    handleLockedButtonClick(acct);
+                                }}
+                                style={{
+                                    color: '#64748b',
+                                    textDecoration: 'none',
+                                    fontWeight: '500',
+                                    fontSize: '0.95rem',
+                                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                                    padding: '0.75rem 1.5rem',
+                                    borderRadius: '50px',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid rgba(100, 116, 139, 0.2)',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    cursor: 'not-allowed',
+                                    opacity: 0.6
+                                }}
+                                onMouseEnter={(e) => {
                                     e.currentTarget.style.backgroundColor = '#f8fafc';
                                     e.currentTarget.style.borderColor = '#3b82f6';
-                                    e.currentTarget.style.color = '#3b82f6';
                                     e.currentTarget.style.transform = 'translateY(-2px)';
                                     e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
-                                }
-                            }}
-                            onMouseLeave={(e) => {
-                                if (pathname !== item.href) {
+                                }}
+                                onMouseLeave={(e) => {
                                     e.currentTarget.style.backgroundColor = 'transparent';
                                     e.currentTarget.style.borderColor = 'rgba(100, 116, 139, 0.2)';
-                                    e.currentTarget.style.color = '#64748b';
                                     e.currentTarget.style.transform = 'translateY(0px)';
                                     e.currentTarget.style.boxShadow = 'none';
-                                }
-                            }}
-                        >
-                            {item.label}
-                        </Link>
+                                }}
+                            >
+                                {item.label} 🔒
+                            </button>
+                        ) : (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                style={{
+                                    color: pathname === item.href ? '#ffffff' : '#64748b',
+                                    textDecoration: 'none',
+                                    fontWeight: '500',
+                                    fontSize: '0.95rem',
+                                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                                    padding: '0.75rem 1.5rem',
+                                    borderRadius: '50px',
+                                    backgroundColor: pathname === item.href ? '#3b82f6' : 'transparent',
+                                    border: '1px solid',
+                                    borderColor: pathname === item.href ? '#3b82f6' : 'rgba(100, 116, 139, 0.2)',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    boxShadow: pathname === item.href ? '0 4px 20px rgba(59, 130, 246, 0.3)' : 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (pathname !== item.href) {
+                                        e.currentTarget.style.backgroundColor = '#f8fafc';
+                                        e.currentTarget.style.borderColor = '#3b82f6';
+                                        e.currentTarget.style.color = '#3b82f6';
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.1)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (pathname !== item.href) {
+                                        e.currentTarget.style.backgroundColor = 'transparent';
+                                        e.currentTarget.style.borderColor = 'rgba(100, 116, 139, 0.2)';
+                                        e.currentTarget.style.color = '#64748b';
+                                        e.currentTarget.style.transform = 'translateY(0px)';
+                                        e.currentTarget.style.boxShadow = 'none';
+                                    }
+                                }}
+                            >
+                                {item.label}
+                            </Link>
+                        )
                     ))}
 
-                    {/* Hospital Logout Button (if logged in) */}
+                    {/* Hospital Logout Button */}
                     {isHospitalLoggedIn && (
                         <button
                             onClick={handleHospitalLogout}
@@ -150,6 +230,7 @@ export default function Navbar() {
                             Logout
                         </button>
                     )}
+
                 </div>
             </div>
 

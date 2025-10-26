@@ -343,7 +343,8 @@ export default function CompleteProfilePage() {
                                                 border: '2px solid #e5e7eb',
                                                 borderRadius: '8px',
                                                 fontSize: '1rem',
-                                                backgroundColor: 'white'
+                                                backgroundColor: 'white',
+                                                color: '#000'
                                             }}
                                         >
                                             <option value="">Select blood type</option>
@@ -500,7 +501,9 @@ function FormField({ label, type, name, value, onChange, placeholder, required }
                     padding: '0.75rem',
                     border: '2px solid #e5e7eb',
                     borderRadius: '8px',
-                    fontSize: '1rem'
+                    fontSize: '1rem',
+                    color: '#000',
+                    backgroundColor: 'white'
                 }}
             />
         </div>
@@ -526,7 +529,9 @@ function FormFieldTextarea({ label, name, value, onChange, placeholder, rows }: 
                     borderRadius: '8px',
                     fontSize: '0.95rem',
                     fontFamily: 'inherit',
-                    resize: 'vertical'
+                    resize: 'vertical',
+                    color: '#000',
+                    backgroundColor: 'white'
                 }}
             />
         </div>

@@ -46,6 +46,8 @@ export default function PatientRegisterPage(){
             } catch (error) {
                 console.log(error);
                 localStorage.removeItem('hospital_token');
+                // Notify Navbar of login status change
+                window.dispatchEvent(new Event('loginStatusChanged'));
                 router.push('/hospital-login');
                 alert("Unauthorized: Hospital not Logged In")
             }

@@ -98,6 +98,9 @@ export default function PatientAccessPage() {
         
         // Store token for future requests
         localStorage.setItem('patient_token', loginData.access_token);
+        
+        // Notify Navbar of login status change
+        window.dispatchEvent(new Event('loginStatusChanged'));
       }
     } catch (err: any) {
       setError(err.message);
@@ -117,6 +120,9 @@ export default function PatientAccessPage() {
     setError('');
     // Remove patient token from localStorage
     localStorage.removeItem('patient_token');
+    
+    // Notify Navbar of login status change
+    window.dispatchEvent(new Event('loginStatusChanged'));
   };
 
   const handleDeleteAccount = async (e: React.FormEvent) => {
@@ -143,6 +149,8 @@ export default function PatientAccessPage() {
       
       // Clear all data and redirect
       localStorage.removeItem('patient_token');
+      // Notify Navbar of login status change
+      window.dispatchEvent(new Event('loginStatusChanged'));
       setIsAuthenticated(false);
       setPatientInfo(null);
       setShowDeleteModal(false);
@@ -451,7 +459,7 @@ export default function PatientAccessPage() {
                     color: '#374151',
                     fontWeight: '500'
                   }}>
-                    {patientInfo.auth_username}
+                    {patientInfo.auth_username || 'N/A'}
                   </p>
                 </div>
                 <div style={{
@@ -477,7 +485,7 @@ export default function PatientAccessPage() {
                     color: '#374151',
                     fontWeight: '500'
                   }}>
-                    {'•'.repeat(patientInfo.auth_password.length)}
+                    {'•'.repeat(patientInfo.auth_password?.length || 8)}
                   </p>
                 </div>
               </div>

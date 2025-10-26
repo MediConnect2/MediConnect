@@ -29,6 +29,10 @@ export default function HospitalLoginPage() {
                 });
                 if (!response.ok) {
                     localStorage.removeItem('hospital_token');
+                    
+                    // Notify Navbar of login status change
+                    window.dispatchEvent(new Event('loginStatusChanged'));
+                    
                     throw new Error('Token is invalid');
                 }
                 const data = await response.json();
@@ -37,6 +41,10 @@ export default function HospitalLoginPage() {
             } catch (error) {
                 console.log(error);
                 localStorage.removeItem('hospital_token');
+                
+                // Notify Navbar of login status change
+                window.dispatchEvent(new Event('loginStatusChanged'));
+                
                 router.push('/hospital-login');
             }
         }
@@ -62,6 +70,10 @@ export default function HospitalLoginPage() {
 
             const data = await response.json();
             localStorage.setItem('hospital_token', data['access_token']);
+            
+            // Notify Navbar of login status change
+            window.dispatchEvent(new Event('loginStatusChanged'));
+            
             alert('Login successful! Signed in with ' + data.name);
             router.push('/patient-register');
         } catch (err: any) {

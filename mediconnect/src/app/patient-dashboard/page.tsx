@@ -85,6 +85,8 @@ export default function PatientDashboardPage() {
     const handleLogout = () => {
         localStorage.removeItem('mediconnect_username');
         localStorage.removeItem('patient_token');
+        // Notify Navbar of login status change so locked buttons update
+        window.dispatchEvent(new Event('loginStatusChanged'));
         router.push('/');
     };
 

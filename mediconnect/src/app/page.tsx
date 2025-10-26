@@ -33,6 +33,10 @@ export default function EMTLoginPage() {
 
             const data = await response.json();
             localStorage.setItem('emt_token', data['access_token']);
+            
+            // Notify Navbar of login status change
+            window.dispatchEvent(new Event('loginStatusChanged'));
+            
             alert(`Login successful! Welcome ${data['emt_info']['first_name']} ${data['emt_info']['last_name']}`);
             router.push('/patient-login');
         } catch (error: any) {

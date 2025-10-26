@@ -71,6 +71,8 @@ export default function PatientLoginPage() {
 
         if (!response.ok) {
           localStorage.removeItem('emt_token');
+          // Notify Navbar of login status change
+          window.dispatchEvent(new Event('loginStatusChanged'));
           throw new Error('Token is invalid');
         }
 
@@ -79,6 +81,8 @@ export default function PatientLoginPage() {
       } catch (error) {
         console.log(error);
         localStorage.removeItem('emt_token');
+        // Notify Navbar of login status change
+        window.dispatchEvent(new Event('loginStatusChanged'));
         alert("Unauthorized: EMT not Logged In");
         router.push('/');
         return;
@@ -97,6 +101,10 @@ export default function PatientLoginPage() {
 
           if (!response.ok) {
             localStorage.removeItem('patient_token');
+            
+            // Notify Navbar of login status change
+            window.dispatchEvent(new Event('loginStatusChanged'));
+            
             throw new Error('Patient token is invalid');
           }
 
@@ -150,6 +158,10 @@ export default function PatientLoginPage() {
         } catch (error) {
           console.log('Patient token validation error:', error);
           localStorage.removeItem('patient_token');
+          
+          // Notify Navbar of login status change
+          window.dispatchEvent(new Event('loginStatusChanged'));
+          
           setIsLoggedIn(false);
           setPatientData(null);
         }
@@ -208,6 +220,9 @@ export default function PatientLoginPage() {
         const data = await response.json();
         
         localStorage.setItem('patient_token', data['access_token']);
+        
+        // Notify Navbar of login status change
+        window.dispatchEvent(new Event('loginStatusChanged'));
         // TODO: Replace with actual OneRecord API call
         const dummyPatientData: PatientData = {
           first_name: data.first_name || formData.first_name,
@@ -272,11 +287,19 @@ export default function PatientLoginPage() {
   const handleEMTLogout = () => {
     localStorage.removeItem('emt_token');
     localStorage.removeItem('patient_token'); // Also clear patient token
+    
+    // Notify Navbar of login status change
+    window.dispatchEvent(new Event('loginStatusChanged'));
+    
     router.push('/');
   };
 
   const handlePatientLogout = async () => {
     localStorage.removeItem('patient_token');
+    
+    // Notify Navbar of login status change
+    window.dispatchEvent(new Event('loginStatusChanged'));
+    
     setIsLoggedIn(false);
     setPatientData(null);
     setFormData({
@@ -307,6 +330,8 @@ export default function PatientLoginPage() {
 
       if (!response.ok) {
         localStorage.removeItem('emt_token');
+        // Notify Navbar of login status change
+        window.dispatchEvent(new Event('loginStatusChanged'));
         alert("EMT session expired. Please login again.");
         router.push('/');
         return;
@@ -314,10 +339,12 @@ export default function PatientLoginPage() {
 
       console.log('EMT token still valid');
     } catch (error) {
-      console.log('EMT token validation error:', error);
-      localStorage.removeItem('emt_token');
-      alert("EMT session expired. Please login again.");
-      router.push('/');
+  console.log('EMT token validation error:', error);
+  localStorage.removeItem('emt_token');
+  // Notify Navbar of login status change
+  window.dispatchEvent(new Event('loginStatusChanged'));
+  alert("EMT session expired. Please login again.");
+  router.push('/');
     }
   };
 
@@ -385,7 +412,7 @@ export default function PatientLoginPage() {
                   e.currentTarget.style.transform = 'translateY(0px)';
                 }}
               >
-                Back to Login
+                Patient Logout
               </button>
               <button 
                 onClick={handleEMTLogout}
