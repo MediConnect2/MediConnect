@@ -17,9 +17,16 @@ interface PatientData {
     state?: string;
     date_of_birth?: string;
     blood_type?: string;
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
     fhir_connected: boolean;
     provider_name?: string;
     fhir_data?: any;
+    manual_allergies?: string;
+    manual_conditions?: string;
+    manual_medications?: string;
+    manual_procedures?: string;
+    manual_immunizations?: string;
     medical_data_summary?: {
         allergies_count: number;
         conditions_count: number;
@@ -27,6 +34,11 @@ interface PatientData {
         observations_count: number;
         procedures_count: number;
         immunizations_count: number;
+        has_manual_allergies?: boolean;
+        has_manual_conditions?: boolean;
+        has_manual_medications?: boolean;
+        has_manual_procedures?: boolean;
+        has_manual_immunizations?: boolean;
     };
 }
 
@@ -54,6 +66,9 @@ export default function PatientDashboardPage() {
             
             if (response.ok) {
                 const data = await response.json();
+                console.log('Patient data received:', data);
+                console.log('Manual allergies:', data.manual_allergies);
+                console.log('Manual conditions:', data.manual_conditions);
                 setPatient(data);
             } else {
                 alert('Failed to load patient data');
@@ -169,58 +184,14 @@ export default function PatientDashboardPage() {
 
                 {/* Overview Tab */}
                 {activeTab === 'overview' && (
-                    <div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-                            {patient.fhir_connected && patient.medical_data_summary && (
-                                <>
-                                    <StatCard icon="🤧" title="Allergies" count={patient.medical_data_summary.allergies_count} color="#ef4444" />
-                                    <StatCard icon="🏥" title="Conditions" count={patient.medical_data_summary.conditions_count} color="#f59e0b" />
-                                    <StatCard icon="💊" title="Medications" count={patient.medical_data_summary.medications_count} color="#10b981" />
-                                    <StatCard icon="🔬" title="Observations" count={patient.medical_data_summary.observations_count} color="#3b82f6" />
-                                    <StatCard icon="⚕️" title="Procedures" count={patient.medical_data_summary.procedures_count} color="#8b5cf6" />
-                                    <StatCard icon="💉" title="Immunizations" count={patient.medical_data_summary.immunizations_count} color="#ec4899" />
-                                </>
-                            )}
-                        </div>
-
-                        {!patient.fhir_connected && (
-                            <div style={{
-                                backgroundColor: '#fff3cd',
-                                border: '2px solid #ffc107',
-                                borderRadius: '12px',
-                                padding: '2rem',
-                                textAlign: 'center'
-                            }}>
-                                <h2 style={{ color: '#856404', fontSize: '1.5rem', marginBottom: '1rem' }}>
-                                    No Healthcare Provider Connected
-                                </h2>
-                                <p style={{ color: '#856404', marginBottom: '1.5rem' }}>
-                                    Connect your healthcare provider to import your medical records automatically.
-                                </p>
-                                <button style={{
-                                    padding: '1rem 2rem',
-                                    backgroundColor: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    fontSize: '1rem',
-                                    fontWeight: '600',
-                                    cursor: 'pointer'
-                                }}>
-                                    Connect Healthcare Provider
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                    <OverviewSection patient={patient} onNavigate={setActiveTab} />
                 )}
 
                 {/* Allergies Tab */}
                 {activeTab === 'allergies' && (
-                    <MedicalRecordsSection
-                        title="Allergies & Intolerances"
-                        icon="🤧"
-                        data={patient.fhir_data?.allergies?.entry || []}
-                        emptyMessage="No allergies recorded"
+                    <AllergiesSection 
+                        fhirAllergies={patient.fhir_data?.allergies?.entry || []}
+                        manualAllergies={patient.manual_allergies}
                     />
                 )}
 
@@ -228,8 +199,8 @@ export default function PatientDashboardPage() {
                 {activeTab === 'conditions' && (
                     <MedicalRecordsSection
                         title="Medical Conditions"
-                        icon="🏥"
                         data={patient.fhir_data?.conditions?.entry || []}
+                        manualData={patient.manual_conditions}
                         emptyMessage="No conditions recorded"
                     />
                 )}
@@ -238,8 +209,8 @@ export default function PatientDashboardPage() {
                 {activeTab === 'medications' && (
                     <MedicalRecordsSection
                         title="Medications"
-                        icon="💊"
                         data={patient.fhir_data?.medications?.entry || []}
+                        manualData={patient.manual_medications}
                         emptyMessage="No medications recorded"
                     />
                 )}
@@ -248,8 +219,8 @@ export default function PatientDashboardPage() {
                 {activeTab === 'procedures' && (
                     <MedicalRecordsSection
                         title="Procedures"
-                        icon="⚕️"
                         data={patient.fhir_data?.procedures?.entry || []}
+                        manualData={patient.manual_procedures}
                         emptyMessage="No procedures recorded"
                     />
                 )}
@@ -258,8 +229,8 @@ export default function PatientDashboardPage() {
                 {activeTab === 'immunizations' && (
                     <MedicalRecordsSection
                         title="Immunizations"
-                        icon="💉"
                         data={patient.fhir_data?.immunizations?.entry || []}
+                        manualData={patient.manual_immunizations}
                         emptyMessage="No immunizations recorded"
                     />
                 )}
@@ -273,34 +244,430 @@ export default function PatientDashboardPage() {
     );
 }
 
-function StatCard({ icon, title, count, color }: { icon: string, title: string, count: number, color: string }) {
+function StatCard({ title, count, color, hasSelfReported, onClick }: { title: string, count: number, color: string, hasSelfReported?: boolean, onClick?: () => void }) {
     return (
-        <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-            borderLeft: `4px solid ${color}`
-        }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{icon}</div>
+        <div 
+            onClick={onClick}
+            style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                borderLeft: `4px solid ${color}`,
+                cursor: onClick ? 'pointer' : 'default',
+                transition: 'all 0.2s ease',
+                transform: 'scale(1)'
+            }}
+            onMouseEnter={(e) => {
+                if (onClick) {
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+                }
+            }}
+            onMouseLeave={(e) => {
+                if (onClick) {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                }
+            }}
+        >
             <div style={{ fontSize: '2rem', fontWeight: '700', color, marginBottom: '0.25rem' }}>
                 {count}
             </div>
-            <div style={{ color: '#6b7280', fontSize: '0.9rem', fontWeight: '500' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.9rem', fontWeight: '500', marginBottom: hasSelfReported ? '0.5rem' : '0' }}>
                 {title}
+            </div>
+            {hasSelfReported && (
+                <div style={{
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    color: '#92400e',
+                    backgroundColor: '#fef3c7',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    display: 'inline-block',
+                    marginTop: '0.25rem'
+                }}>
+                    Self-Reported
+                </div>
+            )}
+        </div>
+    );
+}
+
+function OverviewSection({ patient, onNavigate }: { patient: PatientData, onNavigate?: (tab: string) => void }) {
+    // Extract valid allergies from FHIR data
+    const fhirAllergies = (patient.fhir_data?.allergies?.entry || []).filter((entry: any) => {
+        if (entry.resource?.resourceType === 'OperationOutcome') return false;
+        if (entry.resource?.code?.coding?.[0]?.code === '1631000175102') return false; // "Patient not asked"
+        return true;
+    });
+
+    const hasManualData = patient.manual_allergies || patient.manual_conditions || 
+                          patient.manual_medications || patient.manual_procedures || 
+                          patient.manual_immunizations;
+
+    const scrollToSection = (sectionId: string) => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
+    const handleCardClick = (section: string, sectionId?: string) => {
+        if (sectionId) {
+            // Section is on overview, just scroll
+            scrollToSection(sectionId);
+        } else if (onNavigate) {
+            // Section is on a different tab, navigate there
+            onNavigate(section);
+        }
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Critical Information Banner */}
+            <div style={{
+                backgroundColor: '#fee2e2',
+                border: '3px solid #dc2626',
+                borderRadius: '12px',
+                padding: '1.5rem'
+            }}>
+                <h2 style={{ color: '#991b1b', fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem' }}>
+                    CRITICAL PATIENT INFORMATION
+                </h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <CriticalInfo label="Blood Type" value={patient.blood_type || 'Unknown'} />
+                    <CriticalInfo label="Date of Birth" value={patient.date_of_birth || 'Unknown'} />
+                    <CriticalInfo label="Emergency Contact" value={patient.emergency_contact_phone || 'Not provided'} />
+                </div>
+            </div>
+
+            {/* Data Source Notice */}
+            {hasManualData && (
+                <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '2px solid #f59e0b',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem'
+                }}>
+                    <div>
+                        <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '0.25rem' }}>
+                            Patient-Reported Data Present
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: '#78350f' }}>
+                            Some medical information was manually entered by the patient and may not be verified by a healthcare provider.
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Stats Cards */}
+            {patient.fhir_connected && patient.medical_data_summary && (
+                <div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem', color: '#374151' }}>
+                        Medical Records Summary
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                        <StatCard 
+                            title="Allergies" 
+                            count={patient.medical_data_summary.allergies_count} 
+                            color="#ef4444" 
+                            hasSelfReported={patient.medical_data_summary.has_manual_allergies}
+                            onClick={() => handleCardClick('allergies', 'allergies-section')}
+                        />
+                        <StatCard 
+                            title="Conditions" 
+                            count={patient.medical_data_summary.conditions_count} 
+                            color="#f59e0b" 
+                            hasSelfReported={patient.medical_data_summary.has_manual_conditions}
+                            onClick={() => handleCardClick('conditions', 'conditions-section')}
+                        />
+                        <StatCard 
+                            title="Medications" 
+                            count={patient.medical_data_summary.medications_count} 
+                            color="#10b981" 
+                            hasSelfReported={patient.medical_data_summary.has_manual_medications}
+                            onClick={() => handleCardClick('medications', 'medications-section')}
+                        />
+                        <StatCard 
+                            title="Observations" 
+                            count={patient.medical_data_summary.observations_count} 
+                            color="#3b82f6" 
+                        />
+                        <StatCard 
+                            title="Procedures" 
+                            count={patient.medical_data_summary.procedures_count} 
+                            color="#8b5cf6" 
+                            hasSelfReported={patient.medical_data_summary.has_manual_procedures}
+                            onClick={() => handleCardClick('procedures')}
+                        />
+                        <StatCard 
+                            title="Immunizations" 
+                            count={patient.medical_data_summary.immunizations_count} 
+                            color="#ec4899" 
+                            hasSelfReported={patient.medical_data_summary.has_manual_immunizations}
+                            onClick={() => handleCardClick('immunizations')}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Allergies Display - CRITICAL for EMTs */}
+            <div id="allergies-section">
+                <h3 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '1rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ALLERGIES & INTOLERANCES
+                </h3>
+                
+                {fhirAllergies.length === 0 && !patient.manual_allergies ? (
+                    <div style={{
+                        backgroundColor: '#f0fdf4',
+                        border: '2px solid #22c55e',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        color: '#166534',
+                        fontWeight: '600'
+                    }}>
+                        No known allergies recorded
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {/* FHIR Allergies */}
+                        {fhirAllergies.map((entry: any, index: number) => {
+                            const resource = entry.resource;
+                            const allergen = resource.code?.text || resource.code?.coding?.[0]?.display || 'Unknown allergen';
+                            const severity = resource.reaction?.[0]?.severity;
+                            const manifestation = resource.reaction?.[0]?.manifestation?.[0]?.coding?.[0]?.display || 
+                                                resource.reaction?.[0]?.manifestation?.[0]?.text;
+                            const category = resource.category?.[0];
+
+                            return (
+                                <div
+                                    key={`fhir-allergy-${index}`}
+                                    style={{
+                                        backgroundColor: 'white',
+                                        borderRadius: '12px',
+                                        padding: '1.25rem',
+                                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                                        borderLeft: `5px solid ${severity === 'severe' ? '#dc2626' : severity === 'moderate' ? '#f59e0b' : '#3b82f6'}`,
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'start'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
+                                            {allergen.toUpperCase()}
+                                        </div>
+                                        {category && (
+                                            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem', textTransform: 'capitalize' }}>
+                                                Category: {category}
+                                            </div>
+                                        )}
+                                        {manifestation && (
+                                            <div style={{ fontSize: '0.875rem', color: '#374151' }}>
+                                                <span style={{ fontWeight: '600' }}>Reaction:</span> {manifestation}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {severity && (
+                                        <span style={{
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '700',
+                                            textTransform: 'uppercase',
+                                            backgroundColor: severity === 'severe' ? '#fee2e2' : severity === 'moderate' ? '#fef3c7' : '#dbeafe',
+                                            color: severity === 'severe' ? '#991b1b' : severity === 'moderate' ? '#92400e' : '#1e40af',
+                                            whiteSpace: 'nowrap'
+                                        }}>
+                                            {severity}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {/* Manual Allergies */}
+                        {patient.manual_allergies && (
+                            <div style={{
+                                backgroundColor: '#fffbeb',
+                                borderRadius: '12px',
+                                padding: '1.25rem',
+                                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                                borderLeft: '5px solid #f59e0b'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                    <span style={{ fontSize: '1rem', fontWeight: '700', color: '#92400e' }}>
+                                        PATIENT-REPORTED ALLERGIES
+                                    </span>
+                                    <span style={{
+                                        padding: '0.25rem 0.75rem',
+                                        borderRadius: '9999px',
+                                        fontSize: '0.625rem',
+                                        fontWeight: '700',
+                                        backgroundColor: '#f59e0b',
+                                        color: 'white'
+                                    }}>
+                                        UNVERIFIED
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '0.95rem', color: '#78350f', whiteSpace: 'pre-wrap', fontWeight: '500' }}>
+                                    {patient.manual_allergies}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Current Medications Summary */}
+            {(patient.fhir_data?.medications?.entry?.length > 0 || patient.manual_medications) && (
+                <div id="medications-section">
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem', color: '#374151' }}>
+                        Current Medications
+                    </h3>
+                    <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {patient.fhir_data?.medications?.entry?.slice(0, 10).map((entry: any, index: number) => {
+                                const med = entry.resource?.medicationCodeableConcept?.text || 
+                                           entry.resource?.medicationCodeableConcept?.coding?.[0]?.display || 'Unknown';
+                                return (
+                                    <span key={`med-${index}`} style={{
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: '#e0f2fe',
+                                        color: '#075985',
+                                        borderRadius: '6px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '500'
+                                    }}>
+                                        {med}
+                                    </span>
+                                );
+                            })}
+                            {patient.manual_medications && (
+                                <span style={{
+                                    padding: '0.5rem 1rem',
+                                    backgroundColor: '#fef3c7',
+                                    color: '#92400e',
+                                    borderRadius: '6px',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600',
+                                    border: '2px solid #f59e0b'
+                                }}>
+                                    {patient.manual_medications} (Self-Reported)
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Medical Conditions Summary */}
+            {(patient.fhir_data?.conditions?.entry?.length > 0 || patient.manual_conditions) && (
+                <div id="conditions-section">
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem', color: '#374151' }}>
+                        Medical Conditions
+                    </h3>
+                    <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {patient.fhir_data?.conditions?.entry?.slice(0, 10).map((entry: any, index: number) => {
+                                const condition = entry.resource?.code?.text || 
+                                                entry.resource?.code?.coding?.[0]?.display || 'Unknown';
+                                return (
+                                    <span key={`cond-${index}`} style={{
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: '#fef3c7',
+                                        color: '#92400e',
+                                        borderRadius: '6px',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '500'
+                                    }}>
+                                        {condition}
+                                    </span>
+                                );
+                            })}
+                            {patient.manual_conditions && (
+                                <span style={{
+                                    padding: '0.5rem 1rem',
+                                    backgroundColor: '#fef3c7',
+                                    color: '#92400e',
+                                    borderRadius: '6px',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '600',
+                                    border: '2px solid #f59e0b'
+                                }}>
+                                    {patient.manual_conditions} (Self-Reported)
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* No Provider Connected Warning */}
+            {!patient.fhir_connected && (
+                <div style={{
+                    backgroundColor: '#fff3cd',
+                    border: '2px solid #ffc107',
+                    borderRadius: '12px',
+                    padding: '2rem',
+                    textAlign: 'center'
+                }}>
+                    <h2 style={{ color: '#856404', fontSize: '1.5rem', marginBottom: '1rem' }}>
+                        No Healthcare Provider Connected
+                    </h2>
+                    <p style={{ color: '#856404', marginBottom: '1.5rem' }}>
+                        Connect your healthcare provider to import your medical records automatically.
+                    </p>
+                    <button style={{
+                        padding: '1rem 2rem',
+                        backgroundColor: '#3b82f6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                    }}>
+                        Connect Healthcare Provider
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CriticalInfo({ label, value }: { label: string, value: string }) {
+    return (
+        <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '1rem'
+        }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                {label}
+            </div>
+            <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>
+                {value}
             </div>
         </div>
     );
 }
 
-function MedicalRecordsSection({ title, icon, data, emptyMessage }: any) {
+function MedicalRecordsSection({ title, data, manualData, emptyMessage }: any) {
+    const hasData = data.length > 0 || manualData;
+    
     return (
         <div>
             <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '1.5rem', color: '#1f2937' }}>
-                {icon} {title}
+                {title}
             </h2>
             
-            {data.length === 0 ? (
+            {!hasData ? (
                 <div style={{
                     backgroundColor: 'white',
                     borderRadius: '12px',
@@ -311,10 +678,11 @@ function MedicalRecordsSection({ title, icon, data, emptyMessage }: any) {
                     {emptyMessage}
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* FHIR Data */}
                     {data.map((entry: any, index: number) => (
                         <div
-                            key={index}
+                            key={`fhir-${index}`}
                             style={{
                                 backgroundColor: 'white',
                                 borderRadius: '12px',
@@ -331,6 +699,155 @@ function MedicalRecordsSection({ title, icon, data, emptyMessage }: any) {
                             </pre>
                         </div>
                     ))}
+                    
+                    {/* Manually Entered Data */}
+                    {manualData && (
+                        <div style={{
+                            backgroundColor: '#fffbeb',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                            borderLeft: '4px solid #f59e0b'
+                        }}>
+                            <div style={{ marginBottom: '0.75rem' }}>
+                                <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#92400e' }}>
+                                    Patient-Reported {title}
+                                </h3>
+                            </div>
+                            <div style={{ fontSize: '0.95rem', color: '#78350f', whiteSpace: 'pre-wrap' }}>
+                                {manualData}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AllergiesSection({ fhirAllergies, manualAllergies }: { fhirAllergies: any[], manualAllergies?: string }) {
+    console.log('AllergiesSection - fhirAllergies:', fhirAllergies);
+    console.log('AllergiesSection - manualAllergies:', manualAllergies);
+    
+    // Extract actual allergies from FHIR data (exclude "Patient not asked" or OperationOutcome)
+    const validAllergies = fhirAllergies.filter((entry: any) => {
+        if (entry.resource?.resourceType === 'OperationOutcome') return false;
+        if (entry.resource?.code?.coding?.[0]?.code === '1631000175102') return false; // "Patient not asked"
+        return true;
+    });
+
+    const hasData = validAllergies.length > 0 || manualAllergies;
+
+    return (
+        <div>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '1.5rem', color: '#1f2937' }}>
+                Allergies & Intolerances
+            </h2>
+
+            {!hasData ? (
+                <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '3rem',
+                    textAlign: 'center',
+                    color: '#9ca3af'
+                }}>
+                    No allergies recorded
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* FHIR Allergies */}
+                    {validAllergies.map((entry: any, index: number) => {
+                        const resource = entry.resource;
+                        const allergen = resource.code?.text || resource.code?.coding?.[0]?.display || 'Unknown allergen';
+                        const clinicalStatus = resource.clinicalStatus?.coding?.[0]?.display || resource.clinicalStatus?.coding?.[0]?.code;
+                        const verificationStatus = resource.verificationStatus?.coding?.[0]?.display || resource.verificationStatus?.coding?.[0]?.code;
+                        const severity = resource.reaction?.[0]?.severity;
+                        const manifestation = resource.reaction?.[0]?.manifestation?.[0]?.coding?.[0]?.display || 
+                                            resource.reaction?.[0]?.manifestation?.[0]?.text;
+                        const category = resource.category?.[0];
+
+                        return (
+                            <div
+                                key={index}
+                                style={{
+                                    backgroundColor: 'white',
+                                    borderRadius: '12px',
+                                    padding: '1.5rem',
+                                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                                    borderLeft: `4px solid ${severity === 'severe' ? '#dc2626' : severity === 'moderate' ? '#f59e0b' : '#3b82f6'}`
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', marginBottom: '0.25rem' }}>
+                                            {allergen}
+                                        </h3>
+                                        {category && (
+                                            <span style={{ 
+                                                fontSize: '0.875rem', 
+                                                color: '#6b7280',
+                                                textTransform: 'capitalize'
+                                            }}>
+                                                {category}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {severity && (
+                                        <span style={{
+                                            padding: '0.25rem 0.75rem',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            textTransform: 'uppercase',
+                                            backgroundColor: severity === 'severe' ? '#fee2e2' : severity === 'moderate' ? '#fef3c7' : '#dbeafe',
+                                            color: severity === 'severe' ? '#991b1b' : severity === 'moderate' ? '#92400e' : '#1e40af'
+                                        }}>
+                                            {severity}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {clinicalStatus && (
+                                        <div style={{ fontSize: '0.875rem', color: '#374151' }}>
+                                            <span style={{ fontWeight: '500' }}>Status:</span> {clinicalStatus}
+                                        </div>
+                                    )}
+                                    {verificationStatus && (
+                                        <div style={{ fontSize: '0.875rem', color: '#374151' }}>
+                                            <span style={{ fontWeight: '500' }}>Verification:</span> {verificationStatus}
+                                        </div>
+                                    )}
+                                    {manifestation && (
+                                        <div style={{ fontSize: '0.875rem', color: '#374151' }}>
+                                            <span style={{ fontWeight: '500' }}>Reaction:</span> {manifestation}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {/* Manually Inputted Allergies */}
+                    {manualAllergies && (
+                        <div style={{
+                            backgroundColor: '#fffbeb',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                            borderLeft: '4px solid #f59e0b'
+                        }}>
+                            <div style={{ marginBottom: '0.75rem' }}>
+                                <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#92400e' }}>
+                                    Patient-Reported Allergies
+                                </h3>
+                            </div>
+                            <div style={{ fontSize: '0.95rem', color: '#78350f', whiteSpace: 'pre-wrap' }}>
+                                {manualAllergies}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -341,19 +858,19 @@ function ProfileSection({ patient }: { patient: PatientData }) {
     return (
         <div>
             <h2 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '1.5rem', color: '#1f2937' }}>
-                👤 Profile Information
+                Profile Information
             </h2>
             
             <div style={{ display: 'grid', gap: '2rem' }}>
                 {/* Personal Information */}
-                <InfoCard title="Personal Information" icon="👤">
+                <InfoCard title="Personal Information">
                     <InfoRow label="Full Name" value={`${patient.first_name} ${patient.middle_name} ${patient.last_name}`} />
                     <InfoRow label="Date of Birth" value={patient.date_of_birth || 'Not provided'} />
                     <InfoRow label="Blood Type" value={patient.blood_type || 'Not provided'} />
                 </InfoCard>
 
                 {/* Contact Information */}
-                <InfoCard title="Contact Information" icon="📞">
+                <InfoCard title="Contact Information">
                     <InfoRow label="Email" value={patient.email || 'Not provided'} />
                     <InfoRow label="Phone" value={patient.phone || 'Not provided'} />
                     <InfoRow label="Address" value={patient.address_line1 ? `${patient.address_line1}, ${patient.city}, ${patient.state}` : 'Not provided'} />
@@ -361,9 +878,9 @@ function ProfileSection({ patient }: { patient: PatientData }) {
 
                 {/* Healthcare Provider */}
                 {patient.fhir_connected && (
-                    <InfoCard title="Healthcare Provider" icon="🏥">
+                    <InfoCard title="Healthcare Provider">
                         <InfoRow label="Provider" value={patient.provider_name || 'Unknown'} />
-                        <InfoRow label="Status" value="✅ Connected" />
+                        <InfoRow label="Status" value="Connected" />
                     </InfoCard>
                 )}
             </div>
@@ -371,7 +888,7 @@ function ProfileSection({ patient }: { patient: PatientData }) {
     );
 }
 
-function InfoCard({ title, icon, children }: any) {
+function InfoCard({ title, children }: any) {
     return (
         <div style={{
             backgroundColor: 'white',
@@ -380,7 +897,7 @@ function InfoCard({ title, icon, children }: any) {
             boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
         }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1.5rem', color: '#374151' }}>
-                {icon} {title}
+                {title}
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {children}

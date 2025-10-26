@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
+
 export default function EMTRegisterPage() {
   const [formData, setFormData] = useState({
     username: '',
@@ -22,7 +24,7 @@ export default function EMTRegisterPage() {
     setMessage(null);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/emt/register', {
+      const res = await fetch(`${API_BASE}/emt/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

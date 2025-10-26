@@ -828,6 +828,12 @@ class UpdateProfileRequest(BaseModel):
     blood_type: Optional[str] = None
     insurance_provider: Optional[str] = None
     insurance_policy_number: Optional[str] = None
+    # Manually inputted health data
+    allergies: Optional[str] = None
+    conditions: Optional[str] = None
+    medications: Optional[str] = None
+    procedures: Optional[str] = None
+    immunizations: Optional[str] = None
 
 @app.post("/patient/update-profile")
 async def update_patient_profile(data: UpdateProfileRequest):
@@ -879,6 +885,18 @@ async def update_patient_profile(data: UpdateProfileRequest):
     if data.insurance_policy_number:
         update_data["insurance_policy_number"] = encrypt(data.insurance_policy_number)
     
+    # Store manually inputted health data (encrypted)
+    if data.allergies:
+        update_data["manual_allergies"] = encrypt(data.allergies)
+    if data.conditions:
+        update_data["manual_conditions"] = encrypt(data.conditions)
+    if data.medications:
+        update_data["manual_medications"] = encrypt(data.medications)
+    if data.procedures:
+        update_data["manual_procedures"] = encrypt(data.procedures)
+    if data.immunizations:
+        update_data["manual_immunizations"] = encrypt(data.immunizations)
+    
     # Mark profile as complete
     update_data["profile_completed"] = True
     update_data["profile_updated_at"] = datetime.datetime.now(datetime.timezone.utc)
@@ -924,7 +942,9 @@ async def get_patient_profile(username: str):
     optional_fields = [
         'email', 'phone', 'emergency_contact_name', 'emergency_contact_phone',
         'address_line1', 'address_line2', 'city', 'state', 'zip_code',
-        'date_of_birth', 'blood_type', 'insurance_provider', 'insurance_policy_number'
+        'date_of_birth', 'blood_type', 'insurance_provider', 'insurance_policy_number',
+        'manual_allergies', 'manual_conditions', 'manual_medications', 
+        'manual_procedures', 'manual_immunizations'
     ]
     
     for field in optional_fields:
@@ -944,13 +964,37 @@ async def get_patient_profile(username: str):
         if patient.get("fhir_data"):
             fhir_data = patient.get("fhir_data", {})
             response["fhir_data"] = fhir_data
+            
+            # Count FHIR data + add 1 for each manually reported item
             response["medical_data_summary"] = {
-                "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])),
-                "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])),
-                "medications_count": len(fhir_data.get("medications", {}).get("entry", [])),
+                "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])) + (1 if patient.get("manual_allergies") else 0),
+                "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])) + (1 if patient.get("manual_conditions") else 0),
+                "medications_count": len(fhir_data.get("medications", {}).get("entry", [])) + (1 if patient.get("manual_medications") else 0),
                 "observations_count": len(fhir_data.get("observations", {}).get("entry", [])),
-                "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])),
-                "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", []))
+                "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])) + (1 if patient.get("manual_procedures") else 0),
+                "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", [])) + (1 if patient.get("manual_immunizations") else 0),
+                # Track which ones have manual data
+                "has_manual_allergies": bool(patient.get("manual_allergies")),
+                "has_manual_conditions": bool(patient.get("manual_conditions")),
+                "has_manual_medications": bool(patient.get("manual_medications")),
+                "has_manual_procedures": bool(patient.get("manual_procedures")),
+                "has_manual_immunizations": bool(patient.get("manual_immunizations"))
             }
+    else:
+        # If not connected to FHIR, still show counts for manually reported data
+        response["medical_data_summary"] = {
+            "allergies_count": 1 if patient.get("manual_allergies") else 0,
+            "conditions_count": 1 if patient.get("manual_conditions") else 0,
+            "medications_count": 1 if patient.get("manual_medications") else 0,
+            "observations_count": 0,
+            "procedures_count": 1 if patient.get("manual_procedures") else 0,
+            "immunizations_count": 1 if patient.get("manual_immunizations") else 0,
+            # Track which ones have manual data
+            "has_manual_allergies": bool(patient.get("manual_allergies")),
+            "has_manual_conditions": bool(patient.get("manual_conditions")),
+            "has_manual_medications": bool(patient.get("manual_medications")),
+            "has_manual_procedures": bool(patient.get("manual_procedures")),
+            "has_manual_immunizations": bool(patient.get("manual_immunizations"))
+        }
     
     return response

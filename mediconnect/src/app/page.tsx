@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from "next/image";
+import Link from 'next/link';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
 
 export default function EMTLoginPage() {
     const [username, setUsername] = useState('');

@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
+
 interface PatientInfo {
   API: string;
   portal_name: string;
@@ -57,7 +59,7 @@ export default function PatientAccessPage() {
 
     try {
       // First, verify credentials with /check-patient-access
-      const authResponse = await fetch('http://127.0.0.1:8000/check-patient-access', {
+      const authResponse = await fetch(`${API_BASE}/check-patient-access`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -74,7 +76,7 @@ export default function PatientAccessPage() {
       
       if (authResult.status === 'success') {
         // Now login to get patient info and token
-        const loginResponse = await fetch('http://127.0.0.1:8000/patient/login', {
+        const loginResponse = await fetch(`${API_BASE}/patient/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -123,7 +125,7 @@ export default function PatientAccessPage() {
     setDeleteError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/patient/delete', {
+      const response = await fetch(`${API_BASE}/patient/delete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
