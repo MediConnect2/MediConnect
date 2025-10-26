@@ -113,14 +113,19 @@ export default function PatientDashboardPage() {
         <div style={{ 
             minHeight: '100vh', 
             backgroundColor: '#f3f4f6',
-            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            paddingBottom: '2rem' // Prevent bottom collision
         }}>
             {/* Header */}
             <div style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 color: 'white',
                 padding: '2rem',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                marginBottom: '2rem',
+                position: 'sticky',
+                top: '80px', // Position below the fixed navbar
+                zIndex: 10
             }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -155,7 +160,7 @@ export default function PatientDashboardPage() {
             </div>
 
             {/* Main Content */}
-            <div style={{ maxWidth: '1200px', margin: '2rem auto', padding: '0 2rem' }}>
+            <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 2rem' }}>
                 {/* Tab Navigation */}
                 <div style={{ 
                     display: 'flex', 
@@ -618,7 +623,8 @@ function OverviewSection({ patient, onNavigate }: { patient: PatientData, onNavi
                     border: '2px solid #ffc107',
                     borderRadius: '12px',
                     padding: '2rem',
-                    textAlign: 'center'
+                    textAlign: 'center',
+                    marginBottom: '2rem' // Add bottom margin to prevent collision
                 }}>
                     <h2 style={{ color: '#856404', fontSize: '1.5rem', marginBottom: '1rem' }}>
                         No Healthcare Provider Connected
