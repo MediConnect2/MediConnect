@@ -497,6 +497,15 @@ async def initiate_fhir_login(request: Request, data: FHIRLoginRequest):
         "message": "Redirect patient to this URL to complete Epic authentication"
     }
 
+@app.get("/login")
+async def login_for_fhir(request: Request):
+    """Simplified login endpoint to initiate FHIR OAuth flow"""
+    # Note: In a real app, you'd get the username from a session/token
+    # For this sandbox, we'll use a placeholder or a query param if available
+    username = request.query_params.get("username", "test_patient")
+    session_id = f"fhir_{username}_{secrets.token_urlsafe(16)}"
+    return fhir_oauth.initiate_patient_login(request, session_id)
+
 @app.get("/callback")
 async def fhir_callback(
     code: str = Query(..., description="Authorization code from Epic"),

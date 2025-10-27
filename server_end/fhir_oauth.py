@@ -158,9 +158,15 @@ class FHIROAuthHandler:
             
             if response.status_code != 200:
                 logger.error(f"❌ Token exchange failed: {response.status_code} - {response.text}")
+                try:
+                    error_details = response.json()
+                    detail_message = f"Token exchange failed: {error_details}"
+                except Exception:
+                    detail_message = f"Token exchange failed: {response.text}"
+                
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"Token exchange failed: {response.text}"
+                    detail=detail_message
                 )
             
             token_data = response.json()

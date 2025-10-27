@@ -654,7 +654,7 @@ function OverviewSection({ patient, onNavigate }: { patient: PatientData, onNavi
                     <p style={{ color: '#856404', marginBottom: '1.5rem' }}>
                         Connect your healthcare provider to import your medical records automatically.
                     </p>
-                    <button style={{
+                    <button onClick={() => window.location.href = `${API_BASE}/login`} style={{
                         padding: '1rem 2rem',
                         backgroundColor: '#3b82f6',
                         color: 'white',
