@@ -142,9 +142,9 @@ Once deployed, your application will be:
 
 Once deployed, test these features:
 
-- [ ] EMT registration
-- [ ] EMT login
-- [ ] Patient registration (with hospital portal)
+- [X] EMT registration
+- [X] EMT login
+- [X] Patient registration (with hospital portal)
 - [ ] Patient login (password auth)
 - [ ] Patient login (fingerprint auth)
 - [ ] FHIR OAuth flow (redirect to Epic)

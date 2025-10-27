@@ -88,7 +88,14 @@ export default function PatientDashboardPage() {
         localStorage.removeItem('patient_token');
         // Notify Navbar of login status change so locked buttons update
         window.dispatchEvent(new Event('loginStatusChanged'));
-        router.push('/');
+        
+        // Check if EMT is logged in - if so, redirect back to patient-login for next access
+        const emtToken = localStorage.getItem('emt_token');
+        if (emtToken) {
+            router.push('/patient-login');
+        } else {
+            router.push('/');
+        }
     };
 
     if (loading) {
@@ -133,10 +140,25 @@ export default function PatientDashboardPage() {
                             <h1 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '0.5rem' }}>
                                 Welcome, {patient.first_name} {patient.last_name}
                             </h1>
-                            <p style={{ fontSize: '1.1rem', opacity: 0.9 }}>
-                                {patient.fhir_connected 
-                                    ? `Connected to ${patient.provider_name}`
-                                    : 'No healthcare provider connected'}
+                            <p style={{ fontSize: '1.1rem', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {patient.fhir_connected ? (
+                                    <>
+                                        <svg
+                                            viewBox="0 0 20 20"
+                                            fill="currentColor"
+                                            style={{ width: '20px', height: '20px' }}
+                                        >
+                                            <path
+                                                fillRule="evenodd"
+                                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                                clipRule="evenodd"
+                                            />
+                                        </svg>
+                                        Connected to {patient.provider_name}
+                                    </>
+                                ) : (
+                                    'No healthcare provider connected'
+                                )}
                             </p>
                         </div>
                         <button

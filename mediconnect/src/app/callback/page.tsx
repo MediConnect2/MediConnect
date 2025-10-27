@@ -111,11 +111,31 @@ export default function FHIRCallbackPage() {
                 {status === 'processing' && (
                     <>
                         <div style={{
-                            fontSize: '4rem',
-                            marginBottom: '1.5rem',
-                            animation: 'pulse 2s ease-in-out infinite'
+                            width: '80px',
+                            height: '80px',
+                            margin: '0 auto 1.5rem',
+                            position: 'relative'
                         }}>
-                            🔄
+                            <svg 
+                                style={{
+                                    animation: 'spin 1s linear infinite',
+                                    width: '100%',
+                                    height: '100%'
+                                }}
+                                viewBox="0 0 50 50"
+                            >
+                                <circle
+                                    cx="25"
+                                    cy="25"
+                                    r="20"
+                                    fill="none"
+                                    stroke="#667eea"
+                                    strokeWidth="4"
+                                    strokeLinecap="round"
+                                    strokeDasharray="31.4 31.4"
+                                    transform="rotate(-90 25 25)"
+                                />
+                            </svg>
                         </div>
                         <h1 style={{ 
                             color: '#1a365d',
@@ -154,10 +174,40 @@ export default function FHIRCallbackPage() {
                 {status === 'success' && (
                     <>
                         <div style={{
-                            fontSize: '4rem',
-                            marginBottom: '1.5rem'
+                            width: '80px',
+                            height: '80px',
+                            margin: '0 auto 1.5rem',
+                            position: 'relative'
                         }}>
-                            ✅
+                            <svg
+                                viewBox="0 0 52 52"
+                                style={{
+                                    width: '100%',
+                                    height: '100%'
+                                }}
+                            >
+                                <circle
+                                    cx="26"
+                                    cy="26"
+                                    r="25"
+                                    fill="none"
+                                    stroke="#10b981"
+                                    strokeWidth="2"
+                                />
+                                <path
+                                    fill="none"
+                                    stroke="#10b981"
+                                    strokeWidth="3"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M14 27l7 7 16-16"
+                                    style={{
+                                        strokeDasharray: 48,
+                                        strokeDashoffset: 48,
+                                        animation: 'checkmark 0.5s ease-in-out 0.1s forwards'
+                                    }}
+                                />
+                            </svg>
                         </div>
                         <h1 style={{ 
                             color: '#059669',
@@ -260,6 +310,15 @@ export default function FHIRCallbackPage() {
             </div>
 
             <style jsx>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                @keyframes checkmark {
+                    to {
+                        stroke-dashoffset: 0;
+                    }
+                }
                 @keyframes pulse {
                     0%, 100% {
                         transform: scale(1);

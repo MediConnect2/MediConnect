@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse
 import secrets
 import logging
+import re
 
 # Import FHIR modules
 from fhir_service import FHIRService
@@ -318,13 +319,27 @@ def _build_patient_response(patient):
         
         # Include summary of available FHIR data
         fhir_data = patient.get("fhir_data", {})
+
+        # Helper to count manually-entered items (split on comma, newline, or semicolon)
+        def _count_manual_items(decrypted_value: str | None) -> int:
+            if not decrypted_value:
+                return 0
+            parts = [p.strip() for p in re.split(r"[,\n;]+", decrypted_value) if p.strip()]
+            return len(parts)
+
         response["medical_data_summary"] = {
-            "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])),
-            "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])),
-            "medications_count": len(fhir_data.get("medications", {}).get("entry", [])),
+            "allergies_count": max(0, len(fhir_data.get("allergies", {}).get("entry", [])) + _count_manual_items(response.get("manual_allergies")) - 1),
+            "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])) + _count_manual_items(response.get("manual_conditions")),
+            "medications_count": len(fhir_data.get("medications", {}).get("entry", [])) + _count_manual_items(response.get("manual_medications")),
             "observations_count": len(fhir_data.get("observations", {}).get("entry", [])),
-            "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])),
-            "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", []))
+            "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])) + _count_manual_items(response.get("manual_procedures")),
+            "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", [])) + _count_manual_items(response.get("manual_immunizations")),
+            # Track which ones have manual data
+            "has_manual_allergies": bool(response.get("manual_allergies")),
+            "has_manual_conditions": bool(response.get("manual_conditions")),
+            "has_manual_medications": bool(response.get("manual_medications")),
+            "has_manual_procedures": bool(response.get("manual_procedures")),
+            "has_manual_immunizations": bool(response.get("manual_immunizations"))
         }
     else:
         # Legacy fields for non-FHIR patients (if they exist)
@@ -964,37 +979,49 @@ async def get_patient_profile(username: str):
         if patient.get("fhir_data"):
             fhir_data = patient.get("fhir_data", {})
             response["fhir_data"] = fhir_data
-            
-            # Count FHIR data + add 1 for each manually reported item
+
+            # Helper to count manually-entered items (split on comma, newline, or semicolon)
+            def _count_manual_items(decrypted_value: str | None) -> int:
+                if not decrypted_value:
+                    return 0
+                parts = [p.strip() for p in re.split(r"[,\n;]+", decrypted_value) if p.strip()]
+                return len(parts)
+
             response["medical_data_summary"] = {
-                "allergies_count": len(fhir_data.get("allergies", {}).get("entry", [])) + (1 if patient.get("manual_allergies") else 0),
-                "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])) + (1 if patient.get("manual_conditions") else 0),
-                "medications_count": len(fhir_data.get("medications", {}).get("entry", [])) + (1 if patient.get("manual_medications") else 0),
+                "allergies_count": max(0, len(fhir_data.get("allergies", {}).get("entry", [])) + _count_manual_items(response.get("manual_allergies")) - 1),
+                "conditions_count": len(fhir_data.get("conditions", {}).get("entry", [])) + _count_manual_items(response.get("manual_conditions")),
+                "medications_count": len(fhir_data.get("medications", {}).get("entry", [])) + _count_manual_items(response.get("manual_medications")),
                 "observations_count": len(fhir_data.get("observations", {}).get("entry", [])),
-                "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])) + (1 if patient.get("manual_procedures") else 0),
-                "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", [])) + (1 if patient.get("manual_immunizations") else 0),
+                "procedures_count": len(fhir_data.get("procedures", {}).get("entry", [])) + _count_manual_items(response.get("manual_procedures")),
+                "immunizations_count": len(fhir_data.get("immunizations", {}).get("entry", [])) + _count_manual_items(response.get("manual_immunizations")),
                 # Track which ones have manual data
-                "has_manual_allergies": bool(patient.get("manual_allergies")),
-                "has_manual_conditions": bool(patient.get("manual_conditions")),
-                "has_manual_medications": bool(patient.get("manual_medications")),
-                "has_manual_procedures": bool(patient.get("manual_procedures")),
-                "has_manual_immunizations": bool(patient.get("manual_immunizations"))
+                "has_manual_allergies": bool(response.get("manual_allergies")),
+                "has_manual_conditions": bool(response.get("manual_conditions")),
+                "has_manual_medications": bool(response.get("manual_medications")),
+                "has_manual_procedures": bool(response.get("manual_procedures")),
+                "has_manual_immunizations": bool(response.get("manual_immunizations"))
             }
     else:
-        # If not connected to FHIR, still show counts for manually reported data
+        # If not connected to FHIR, compute counts from manually reported (decrypted) data
+        def _count_manual_items_no_fhir(decrypted_value: str | None) -> int:
+            if not decrypted_value:
+                return 0
+            parts = [p.strip() for p in re.split(r"[,\n;]+", decrypted_value) if p.strip()]
+            return len(parts)
+
         response["medical_data_summary"] = {
-            "allergies_count": 1 if patient.get("manual_allergies") else 0,
-            "conditions_count": 1 if patient.get("manual_conditions") else 0,
-            "medications_count": 1 if patient.get("manual_medications") else 0,
+            "allergies_count": max(0, _count_manual_items_no_fhir(response.get("manual_allergies")) - 1),
+            "conditions_count": _count_manual_items_no_fhir(response.get("manual_conditions")),
+            "medications_count": _count_manual_items_no_fhir(response.get("manual_medications")),
             "observations_count": 0,
-            "procedures_count": 1 if patient.get("manual_procedures") else 0,
-            "immunizations_count": 1 if patient.get("manual_immunizations") else 0,
+            "procedures_count": _count_manual_items_no_fhir(response.get("manual_procedures")),
+            "immunizations_count": _count_manual_items_no_fhir(response.get("manual_immunizations")),
             # Track which ones have manual data
-            "has_manual_allergies": bool(patient.get("manual_allergies")),
-            "has_manual_conditions": bool(patient.get("manual_conditions")),
-            "has_manual_medications": bool(patient.get("manual_medications")),
-            "has_manual_procedures": bool(patient.get("manual_procedures")),
-            "has_manual_immunizations": bool(patient.get("manual_immunizations"))
+            "has_manual_allergies": bool(response.get("manual_allergies")),
+            "has_manual_conditions": bool(response.get("manual_conditions")),
+            "has_manual_medications": bool(response.get("manual_medications")),
+            "has_manual_procedures": bool(response.get("manual_procedures")),
+            "has_manual_immunizations": bool(response.get("manual_immunizations"))
         }
     
     return response

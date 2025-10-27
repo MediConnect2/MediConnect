@@ -15,11 +15,10 @@ export default function HospitalLoginPage() {
     useEffect(() =>{
         const checkToken = async () => {
             const token = localStorage.getItem('hospital_token');
-            
-            // Debug: Log the API URL being used
-            console.log('🔍 API_BASE:', API_BASE);
-            console.log('🔍 Full URL:', `${API_BASE}/verify-hospital-token`);
-            
+
+            // If no token present, do nothing (user not logged in)
+            if (!token) return;
+
             try{
                 const response = await fetch(`${API_BASE}/verify-hospital-token`, {
                     method: 'GET',
@@ -27,25 +26,21 @@ export default function HospitalLoginPage() {
                         'Authorization': `Bearer ${token}`,
                     }
                 });
+
                 if (!response.ok) {
+                    // Invalid token: clear and notify, but avoid noisy console errors
                     localStorage.removeItem('hospital_token');
-                    
-                    // Notify Navbar of login status change
                     window.dispatchEvent(new Event('loginStatusChanged'));
-                    
-                    throw new Error('Token is invalid');
+                    return;
                 }
+
+                // If token is valid, redirect
                 const data = await response.json();
-                console.log('Token is valid: pushing to /patient-register', data);
                 router.push('/patient-register');
-            } catch (error) {
-                console.log(error);
+            } catch (err) {
+                // Network or unexpected error — clear token and notify, but keep logs minimal
                 localStorage.removeItem('hospital_token');
-                
-                // Notify Navbar of login status change
                 window.dispatchEvent(new Event('loginStatusChanged'));
-                
-                router.push('/hospital-login');
             }
         }
         checkToken();

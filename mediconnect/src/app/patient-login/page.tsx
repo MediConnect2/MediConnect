@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'https://localhost:8000';
 
@@ -51,8 +51,14 @@ export default function PatientLoginPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [patientData, setPatientData] = useState<PatientData | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillUsername = searchParams?.get('username') ?? '';
 
   useEffect(() => {
+    // Prefill username if an EMT redirected here with a target patient username
+    if (prefillUsername) {
+      setFormData(prev => ({ ...prev, mediconnect_username: prefillUsername.toLowerCase() }));
+    }
     const checkToken = async () => {
       const token = localStorage.getItem('emt_token');
       if (!token) {
@@ -111,49 +117,87 @@ export default function PatientLoginPage() {
           const patientTokenData = await response.json();
           console.log('Patient Token is valid', patientTokenData);
           
-          // Fetch patient information or use dummy data
-          // TODO: Replace with actual OneRecord API call
-          const dummyPatientData: PatientData = {
-            first_name: patientTokenData.first_name || "Jane",
-            last_name: patientTokenData.last_name || "Doe",
-            middle_name: "Elizabeth",
-            date_of_birth: "1985-07-15",
-            blood_type: "O+",
-            allergies: ["Penicillin", "Shellfish", "Latex"],
-            medications: [
-              "Lisinopril 10mg - Once daily",
-              "Metformin 500mg - Twice daily",
-              "Vitamin D3 1000 IU - Once daily"
-            ],
-            medical_conditions: [
-              "Type 2 Diabetes",
-              "Hypertension",
-              "Mild Asthma"
-            ],
-            emergency_contact: {
-              name: "John Smith",
-              phone: "(555) 123-4567",
-              relationship: "Spouse"
-            },
-            insurance: {
-              provider: "Blue Cross Blue Shield",
-              policy_number: "BC123456789"
-            },
-            primary_care_physician: {
-              name: "Dr. Sarah Johnson",
-              phone: "(555) 987-6543",
-              practice: "Valley Medical Center"
-            },
-            last_visit: "2024-01-15",
-            vital_signs: {
-              blood_pressure: "132/78 mmHg",
-              heart_rate: "72 bpm",
-              temperature: "98.6°F",
-              oxygen_saturation: "98%"
+          // Fetch actual patient profile data
+          const username = patientTokenData.sub; // JWT contains username in 'sub' field
+          const profileResponse = await fetch(`${API_BASE}/patient/profile/${username}`);
+          
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            
+            // Parse FHIR data if available
+            const fhirData = profileData.fhir_data || {};
+            
+            // Extract allergies from FHIR
+            const allergies: string[] = [];
+            if (fhirData.allergies?.entry) {
+              fhirData.allergies.entry.forEach((entry: any) => {
+                const allergyName = entry.resource?.code?.coding?.[0]?.display || 
+                                   entry.resource?.code?.text || 
+                                   "Unknown Allergy";
+                allergies.push(allergyName);
+              });
             }
-          };
+            if (profileData.manual_allergies) {
+              allergies.push(...profileData.manual_allergies.split(',').map((a: string) => a.trim()));
+            }
+            
+            // Extract medications from FHIR
+            const medications: string[] = [];
+            if (fhirData.medications?.entry) {
+              fhirData.medications.entry.forEach((entry: any) => {
+                const medName = entry.resource?.medicationCodeableConcept?.coding?.[0]?.display ||
+                               entry.resource?.medicationCodeableConcept?.text ||
+                               "Unknown Medication";
+                medications.push(medName);
+              });
+            }
+            if (profileData.manual_medications) {
+              medications.push(...profileData.manual_medications.split(',').map((m: string) => m.trim()));
+            }
+            
+            // Extract conditions from FHIR
+            const medical_conditions: string[] = [];
+            if (fhirData.conditions?.entry) {
+              fhirData.conditions.entry.forEach((entry: any) => {
+                const condName = entry.resource?.code?.coding?.[0]?.display ||
+                                entry.resource?.code?.text ||
+                                "Unknown Condition";
+                medical_conditions.push(condName);
+              });
+            }
+            if (profileData.manual_conditions) {
+              medical_conditions.push(...profileData.manual_conditions.split(',').map((c: string) => c.trim()));
+            }
+            
+            // Build patient data from real profile
+            const realPatientData: PatientData = {
+              first_name: profileData.first_name,
+              last_name: profileData.last_name,
+              middle_name: profileData.middle_name || undefined,
+              date_of_birth: profileData.date_of_birth || undefined,
+              blood_type: profileData.blood_type || undefined,
+              allergies: allergies.length > 0 ? allergies : undefined,
+              medications: medications.length > 0 ? medications : undefined,
+              medical_conditions: medical_conditions.length > 0 ? medical_conditions : undefined,
+              emergency_contact: profileData.emergency_contact_name ? {
+                name: profileData.emergency_contact_name,
+                phone: profileData.emergency_contact_phone || "",
+                relationship: "Emergency Contact"
+              } : undefined,
+              insurance: profileData.insurance_provider ? {
+                provider: profileData.insurance_provider,
+                policy_number: profileData.insurance_policy_number || ""
+              } : undefined
+            };
 
-          setPatientData(dummyPatientData);
+            setPatientData(realPatientData);
+          } else {
+            // Fallback to basic data from token
+            setPatientData({
+              first_name: patientTokenData.first_name || "Patient",
+              last_name: patientTokenData.last_name || ""
+            });
+          }
           setIsLoggedIn(true);
         } catch (error) {
           console.log('Patient token validation error:', error);
@@ -223,49 +267,103 @@ export default function PatientLoginPage() {
         
         // Notify Navbar of login status change
         window.dispatchEvent(new Event('loginStatusChanged'));
-        // TODO: Replace with actual OneRecord API call
-        const dummyPatientData: PatientData = {
-          first_name: data.first_name || formData.first_name,
-          last_name: data.last_name || formData.last_name,
-          middle_name: "Elizabeth",
-          date_of_birth: "1985-07-15",
-          blood_type: "O+",
-          allergies: ["Penicillin", "Shellfish", "Latex"],
-          medications: [
-            "Lisinopril 10mg - Once daily",
-            "Metformin 500mg - Twice daily",
-            "Vitamin D3 1000 IU - Once daily"
-          ],
-          medical_conditions: [
-            "Type 2 Diabetes",
-            "Hypertension",
-            "Mild Asthma"
-          ],
-          emergency_contact: {
-            name: "John Smith",
-            phone: "(555) 123-4567",
-            relationship: "Spouse"
-          },
-          insurance: {
-            provider: "Blue Cross Blue Shield",
-            policy_number: "BC123456789"
-          },
-          primary_care_physician: {
-            name: "Dr. Sarah Johnson",
-            phone: "(555) 987-6543",
-            practice: "Valley Medical Center"
-          },
-          last_visit: "2024-01-15",
-          vital_signs: {
-            blood_pressure: "132/78 mmHg",
-            heart_rate: "72 bpm",
-            temperature: "98.6°F",
-            oxygen_saturation: "98%"
+        
+        // Fetch actual patient profile data
+        const username = data.patient_info?.first_name ? 
+          formData.mediconnect_username : 
+          formData.first_name; // Use the username they logged in with
+        
+        const profileResponse = await fetch(`${API_BASE}/patient/profile/${data.patient_info.first_name ? formData.mediconnect_username : username}`);
+        
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          
+          // Parse FHIR data if available
+          const fhirData = profileData.fhir_data || {};
+          
+          // Extract allergies from FHIR
+          const allergies: string[] = [];
+          if (fhirData.allergies?.entry) {
+            fhirData.allergies.entry.forEach((entry: any) => {
+              const allergyName = entry.resource?.code?.coding?.[0]?.display || 
+                                 entry.resource?.code?.text || 
+                                 "Unknown Allergy";
+              allergies.push(allergyName);
+            });
           }
-        };
+          if (profileData.manual_allergies) {
+            allergies.push(...profileData.manual_allergies.split(',').map((a: string) => a.trim()));
+          }
+          
+          // Extract medications from FHIR
+          const medications: string[] = [];
+          if (fhirData.medications?.entry) {
+            fhirData.medications.entry.forEach((entry: any) => {
+              const medName = entry.resource?.medicationCodeableConcept?.coding?.[0]?.display ||
+                             entry.resource?.medicationCodeableConcept?.text ||
+                             "Unknown Medication";
+              medications.push(medName);
+            });
+          }
+          if (profileData.manual_medications) {
+            medications.push(...profileData.manual_medications.split(',').map((m: string) => m.trim()));
+          }
+          
+          // Extract conditions from FHIR
+          const medical_conditions: string[] = [];
+          if (fhirData.conditions?.entry) {
+            fhirData.conditions.entry.forEach((entry: any) => {
+              const condName = entry.resource?.code?.coding?.[0]?.display ||
+                              entry.resource?.code?.text ||
+                              "Unknown Condition";
+              medical_conditions.push(condName);
+            });
+          }
+          if (profileData.manual_conditions) {
+            medical_conditions.push(...profileData.manual_conditions.split(',').map((c: string) => c.trim()));
+          }
+          
+          // Build patient data from real profile
+          const realPatientData: PatientData = {
+            first_name: profileData.first_name,
+            last_name: profileData.last_name,
+            middle_name: profileData.middle_name || undefined,
+            date_of_birth: profileData.date_of_birth || undefined,
+            blood_type: profileData.blood_type || undefined,
+            allergies: allergies.length > 0 ? allergies : undefined,
+            medications: medications.length > 0 ? medications : undefined,
+            medical_conditions: medical_conditions.length > 0 ? medical_conditions : undefined,
+            emergency_contact: profileData.emergency_contact_name ? {
+              name: profileData.emergency_contact_name,
+              phone: profileData.emergency_contact_phone || "",
+              relationship: "Emergency Contact"
+            } : undefined,
+            insurance: profileData.insurance_provider ? {
+              provider: profileData.insurance_provider,
+              policy_number: profileData.insurance_policy_number || ""
+            } : undefined
+          };
 
-        setPatientData(dummyPatientData);
-        setIsLoggedIn(true);
+          setPatientData(realPatientData);
+        } else {
+          // Fallback to data from login response
+          setPatientData({
+            first_name: data.patient_info.first_name,
+            last_name: data.patient_info.last_name,
+            middle_name: data.patient_info.middle_name || undefined
+          });
+        }
+        
+        // Check if EMT is logged in - if so, redirect to patient dashboard
+        const emtToken = localStorage.getItem('emt_token');
+        if (emtToken) {
+          // EMT is logged in, redirect to patient dashboard
+          const patientUsername = formData.mediconnect_username || formData.first_name;
+          router.push(`/patient-dashboard?username=${encodeURIComponent(patientUsername)}`);
+        } else {
+          // Regular patient login, show the patient info page
+          setIsLoggedIn(true);
+        }
         
       } else {
         const err = await response.json();
@@ -726,25 +824,6 @@ export default function PatientLoginPage() {
             </div>
           </div>
 
-          {/* OneRecord Integration Note */}
-          <div style={{
-            marginTop: '2rem',
-            padding: '1.25rem',
-            backgroundColor: '#f0f9ff',
-            borderRadius: '20px',
-            border: '2px solid #bae6fd'
-          }}>
-            <p style={{ 
-              margin: 0,
-              color: '#0c4a6e',
-              fontSize: '0.9rem',
-              lineHeight: '1.6',
-              fontWeight: '500'
-            }}>
-              <strong>Note:</strong> This is currently showing dummy data for development purposes. 
-              In production, this information will be securely retrieved from OneRecord APIs in real-time.
-            </p>
-          </div>
         </div>
       </div>
     );

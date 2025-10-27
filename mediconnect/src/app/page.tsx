@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from "next/image";
 import Link from 'next/link';
 
@@ -13,6 +13,8 @@ export default function EMTLoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const targetPatient = searchParams?.get('username') || '';
 
     const handleLogin = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -38,7 +40,12 @@ export default function EMTLoginPage() {
             window.dispatchEvent(new Event('loginStatusChanged'));
             
             alert(`Login successful! Welcome ${data['emt_info']['first_name']} ${data['emt_info']['last_name']}`);
-            router.push('/patient-login');
+            // If EMT was directed to login for a specific patient, forward that username
+            if (targetPatient) {
+                router.push(`/patient-login?username=${encodeURIComponent(targetPatient)}`);
+            } else {
+                router.push('/patient-login');
+            }
         } catch (error: any) {
             setError(error.message);
         } finally {
