@@ -273,7 +273,9 @@ async def login_patient(data:PatientLogin):
                     "patient_info": _build_patient_response(patient),
                     "access_token": token
                 }
-            raise HTTPException(status_code = 404, detail = "Patient not Found with Matching Details")
+        # If we finish iterating through all patients without returning above,
+        # no matching patient was found.
+        raise HTTPException(status_code = 404, detail = "Patient not Found with Matching Details")
         
     # --- Missing Fields ---
     raise HTTPException(status_code = 400, detail = "Insufficient credentials. Provide either (1) MediConnect username and password, (2) name and driver license ID, or (3) fingerprint.")
